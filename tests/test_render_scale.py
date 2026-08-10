@@ -1,3 +1,4 @@
+import re
 import time
 
 import pytest
@@ -23,3 +24,44 @@ def test_parse_and_svg_render_scale_profile(table_count):
     assert len(model.tables) == table_count
     assert svg.startswith(b"<?xml") and b"<svg" in svg
     assert elapsed < 15
+
+
+def test_many_to_one_chain_renders_parent_to_child_order():
+    source = '''erModel Ordering {
+ direction LR
+ subjectArea Core {
+  table PARENT {
+   integer id PK
+  }
+  table CHILD {
+   integer id PK
+   integer parent_id FK
+  }
+  table GRANDCHILD {
+   integer id PK
+   integer child_id FK
+  }
+  relationship CHILD.parent_id -> PARENT.id {
+   cardinality many-to-one
+  }
+  relationship GRANDCHILD.child_id -> CHILD.id {
+   cardinality many-to-one
+  }
+ }
+}'''
+    dot = model_to_dot(parse_er_source(source))
+    assert "PARENT:id_e:e -> CHILD:parent_id_w:w" in dot
+    assert "CHILD:id_e:e -> GRANDCHILD:child_id_w:w" in dot
+    svg = render_graphviz_bytes(dot, "svg")
+    def left_x(table_name: str) -> float:
+        match = re.search(
+            rf'<title>{table_name}</title>\s*<polygon[^>]+points="([0-9.-]+),'.encode(),
+            svg,
+        )
+        assert match is not None
+        return float(match.group(1))
+
+    parent_x = left_x("PARENT")
+    child_x = left_x("CHILD")
+    grandchild_x = left_x("GRANDCHILD")
+    assert parent_x < child_x < grandchild_x

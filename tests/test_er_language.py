@@ -30,13 +30,16 @@ def test_parse_valid_model_to_typed_ir():
 
 def test_dot_connects_exact_field_ports():
     dot = model_to_dot(parse_er_source(SOURCE))
-    assert "PO:supplier_id_e:e -> SUPPLIER:supplier_id_w:w" in dot
+    assert "SUPPLIER:supplier_id_e:e -> PO:supplier_id_w:w" in dot
     assert 'PORT="supplier_id_w"' in dot
     assert 'PORT="supplier_id_e"' in dot
 
 def test_top_to_bottom_edges_still_use_external_table_boundaries():
     model = parse_er_source(SOURCE.replace("direction LR", "direction TB"))
-    assert "PO:supplier_id_e:e -> SUPPLIER:supplier_id_w:w" in model_to_dot(model)
+    dot = model_to_dot(model)
+    assert "SUPPLIER:supplier_id_e:e -> PO:supplier_id_w:w" in dot
+    assert 'dir="both" arrowtail="tee" arrowhead="crow"' in dot
+    assert "FK PO.supplier_id references SUPPLIER.supplier_id" in dot
 
 @pytest.mark.parametrize("bad, message", [
  (SOURCE.replace("table PO", "table SUPPLIER"), "Duplicate table"),
@@ -90,8 +93,8 @@ def test_composite_key_relationship_expands_ordered_field_pairs():
     assert {relationship.attributes["composite_size"] for relationship in model.relationships} == {2}
     assert [relationship.attributes["composite_position"] for relationship in model.relationships] == [1, 2]
     dot = model_to_dot(model)
-    assert "CHILD:tenant_id_e:e -> PARENT:tenant_id_w:w" in dot
-    assert "CHILD:parent_id_e:e -> PARENT:parent_id_w:w" in dot
+    assert "PARENT:tenant_id_e:e -> CHILD:tenant_id_w:w" in dot
+    assert "PARENT:parent_id_e:e -> CHILD:parent_id_w:w" in dot
 
 
 def test_composite_relationship_rejects_different_pair_counts():

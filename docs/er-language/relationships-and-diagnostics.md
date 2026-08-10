@@ -25,6 +25,8 @@ erModel Relationship_Example {
 
 The core grammar accepts arbitrary named relationship attributes with identifier, number or quoted-string values. `cardinality` defaults to `many-to-one`; `label` defaults to empty. The current renderer displays the label and retains other attributes in the intermediate model.
 
+For left-to-right diagrams, `many-to-one` relationships are laid out from the referenced one-side table to the dependent many-side table. The connector uses a bar at the one side and a crow's foot at the many side, while its tooltip records the original foreign-key direction. This changes presentation order only; the parsed relationship remains `CHILD.foreign_key -> PARENT.primary_key`.
+
 Composite relationships use ordered, equal-length field lists. Each pair is retained as a linked relationship edge in the typed model and renderer:
 
 ```erd

@@ -39,10 +39,25 @@ def model_to_dot(model: ERModel, highlights: set[str] | None = None) -> str:
         lines.append("}")
     for rel in model.relationships:
         attrs = [f'label="{html.escape(rel.label)}"'] if rel.label else []
-        attrs.append(f'tooltip="{html.escape(rel.cardinality)}"')
+        if rel.cardinality.casefold() == "many-to-one":
+            # Lay referenced parents before dependent children so LR diagrams
+            # read from the one side to the many side. The crow's-foot remains
+            # visual cardinality; the tooltip states the actual FK direction.
+            attrs.extend([
+                'dir="both"',
+                'arrowtail="tee"',
+                'arrowhead="crow"',
+                f'tooltip="one-to-many; FK {html.escape(rel.source_table)}.{html.escape(rel.source_column)} references {html.escape(rel.target_table)}.{html.escape(rel.target_column)}"',
+            ])
+            left_table, left_column = rel.target_table, rel.target_column
+            right_table, right_column = rel.source_table, rel.source_column
+        else:
+            attrs.append(f'tooltip="{html.escape(rel.cardinality)}"')
+            left_table, left_column = rel.source_table, rel.source_column
+            right_table, right_column = rel.target_table, rel.target_column
         lines.append(
-            f'{_ident(rel.source_table)}:{_ident(rel.source_column)}_e:e -> '
-            f'{_ident(rel.target_table)}:{_ident(rel.target_column)}_w:w '
+            f'{_ident(left_table)}:{_ident(left_column)}_e:e -> '
+            f'{_ident(right_table)}:{_ident(right_column)}_w:w '
             f'[{" ".join(attrs)}];'
         )
     lines.append("}")
