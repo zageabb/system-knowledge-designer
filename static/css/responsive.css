@@ -92,3 +92,8 @@ main {
     height: max(540px, calc(100dvh - 150px));
   }
 }
+
+@media (max-width: 900px) {
+  .search-runtime-layout { grid-template-columns: 1fr; }
+  .search-activity-panel { position: static; max-height: none; }
+}

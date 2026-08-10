@@ -67,6 +67,8 @@ Enter terms in **Search project evidence** and optionally filter to schema, docu
 
 Every source is project-scoped. Schema results link to the catalogue, relationships to the diagram workbench, sample evidence to its dataset, and document results to the stored chunk citation page. Document excerpts remain escaped when rendered.
 
+The **Search activity** table on the right shows what the local search actually did: query parsing, catalogue matching, relationship traversal, FTS5 document lookup, bounded sample scanning, permitted cross-project checks and final result assembly. Each applicable retrieval stage reports its result count. This activity is deterministic and completes within the page request; it does not imply an external provider or hidden AI call.
+
 When a query contains two or more schema concepts, the search service resolves matching table/field endpoints and performs a bounded breadth-first traversal of the active relationship graph. It returns shortest paths of at most four hops, with each field-to-field edge shown as evidence. For example, `supplier invoice` can show a route through purchase orders when those relationships exist in the approved model. Traversal is deterministic and does not invent missing edges.
 
 Document content is evidence, not executable instruction. Search results do not modify the catalogue or execute actions.

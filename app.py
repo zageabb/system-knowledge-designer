@@ -536,7 +536,20 @@ def create_app(config_overrides: dict | None = None) -> Flask:
                 link_targets.extend(("column", f"{table.name}.{column.name}", f"Column · {table.name}.{column.name}") for column in table.columns)
         coverage = knowledge_coverage(project=project, model=active_model)
         evidence_records = EvidenceRecord.query.filter_by(project_id=project.id).order_by(EvidenceRecord.id.desc()).limit(20).all()
-        return render_template("knowledge.html", project=project, documents=documents, query=query, source=source, document_results=document_results, schema_results=schema_results, relationship_results=relationship_results, sample_results=sample_results, cross_project_results=cross_project_results, link_targets=link_targets, coverage=coverage, evidence_records=evidence_records)
+        local_activity = []
+        if query:
+            local_activity.append({"action": "Parse query", "detail": f"{len(query.split())} term(s); source filter: {source}", "count": None})
+            if source in {"all", "schema"}:
+                local_activity.extend([
+                    {"action": "Search catalogue", "detail": "Active approved tables and fields", "count": len(schema_results)},
+                    {"action": "Traverse relationships", "detail": "Direct matches and bounded paths", "count": len(relationship_results)},
+                ])
+            if source in {"all", "documents"}: local_activity.append({"action": "Search document index", "detail": "Project-scoped SQLite FTS5 chunks", "count": len(document_results)})
+            if source in {"all", "samples"}: local_activity.append({"action": "Scan sample values", "detail": "Bounded representative dataset rows", "count": len(sample_results)})
+            if source in {"all", "cross-project"}: local_activity.append({"action": "Check attached projects", "detail": "Explicit links, aliases and attachments only", "count": len(cross_project_results)})
+            total = sum(len(items) for items in (schema_results, relationship_results, document_results, sample_results, cross_project_results))
+            local_activity.append({"action": "Assemble results", "detail": "Escaped evidence ready for review", "count": total})
+        return render_template("knowledge.html", project=project, documents=documents, query=query, source=source, document_results=document_results, schema_results=schema_results, relationship_results=relationship_results, sample_results=sample_results, cross_project_results=cross_project_results, link_targets=link_targets, coverage=coverage, evidence_records=evidence_records, local_activity=local_activity)
 
     @app.get("/projects/<int:project_id>/knowledge/documents/<int:document_id>")
     @login_required
@@ -880,7 +893,9 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             try:
                 outbound_query = sanitise_external_query(original_query)
                 job = ExternalResearchJob(project_id=project.id, original_query=original_query[:4000], outbound_query=outbound_query, provider="Wikipedia", status="proposed", requested_by=current_user.username)
-                db.session.add(job); db.session.flush(); audit("external_research.propose", "ExternalResearchJob", job.id, f"outbound={outbound_query}"); db.session.commit()
+                db.session.add(job); db.session.flush()
+                db.session.add(ExternalResearchJobEvent(project_id=project.id, job_id=job.id, event_type="prepared", actor=current_user.username, detail=f"Sanitised locally to {len(outbound_query.split())} outbound term(s); awaiting confirmation"))
+                audit("external_research.propose", "ExternalResearchJob", job.id, f"outbound={outbound_query}"); db.session.commit()
                 flash("Sanitised outbound query prepared. Review it before sending.", "success")
             except ExternalResearchError as exc:
                 flash(str(exc), "danger")
@@ -888,7 +903,16 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         jobs = ExternalResearchJob.query.filter_by(project_id=project.id).order_by(ExternalResearchJob.id.desc()).limit(20).all()
         promotions = {(promotion.job_id, promotion.citation_index): promotion for promotion in ExternalResearchPromotion.query.filter_by(project_id=project.id).all()}
         retry_origins = {event.related_job_id: event.job_id for event in ExternalResearchJobEvent.query.filter_by(project_id=project.id, event_type="retried").all() if event.related_job_id}
-        return render_template("external_research.html", project=project, jobs=jobs, enabled=get_bool(EXTERNAL_RESEARCH_ENABLED), promotions=promotions, retry_origins=retry_origins)
+        activity_events = ExternalResearchJobEvent.query.filter_by(project_id=project.id).order_by(ExternalResearchJobEvent.id.desc()).limit(100).all()
+        return render_template("external_research.html", project=project, jobs=jobs, enabled=get_bool(EXTERNAL_RESEARCH_ENABLED), promotions=promotions, retry_origins=retry_origins, activity_events=activity_events)
+
+    @app.get("/projects/<int:project_id>/research/activity")
+    @login_required
+    def external_research_activity(project_id):
+        project = db.get_or_404(SystemProject, project_id)
+        events = ExternalResearchJobEvent.query.filter_by(project_id=project.id).order_by(ExternalResearchJobEvent.id.desc()).limit(100).all()
+        jobs = ExternalResearchJob.query.filter_by(project_id=project.id).order_by(ExternalResearchJob.id.desc()).limit(20).all()
+        return {"running": sum(job.status == "running" for job in jobs), "events": [{"id": event.id, "job_id": event.job_id, "event_type": event.event_type, "detail": event.detail, "created_at": event.created_at.isoformat()} for event in events]}
 
     @app.post("/projects/<int:project_id>/research/<int:job_id>/send")
     @login_required
@@ -898,7 +922,9 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         if job.status != "proposed": flash("This research query is no longer awaiting confirmation.", "warning"); return redirect(url_for("external_research", project_id=project.id))
         if not get_bool(EXTERNAL_RESEARCH_ENABLED):
             flash("External research is disabled. Local knowledge search remains available.", "danger"); return redirect(url_for("external_research", project_id=project.id))
-        job.status = "running"; job.sent_at = utcnow(); audit("external_research.send", "ExternalResearchJob", job.id, f"provider={job.provider}"); db.session.commit()
+        job.status = "running"; job.sent_at = utcnow()
+        db.session.add(ExternalResearchJobEvent(project_id=project.id, job_id=job.id, event_type="provider_started", actor=current_user.username, detail=f"Confirmed and sent to fixed provider {job.provider}"))
+        audit("external_research.send", "ExternalResearchJob", job.id, f"provider={job.provider}"); db.session.commit()
         outbound_query = job.outbound_query
         def run_research():
             try:
@@ -914,9 +940,11 @@ def create_app(config_overrides: dict | None = None) -> Flask:
                 if failure is None:
                     current_job.status = "completed"
                     current_job.results_json = json.dumps([citation.__dict__ for citation in citations], sort_keys=True)
+                    db.session.add(ExternalResearchJobEvent(project_id=current_job.project_id, job_id=current_job.id, event_type="completed", actor="background-worker", detail=f"Provider returned {len(citations)} bounded citation(s)"))
                     db.session.add(AuditEvent(action="external_research.complete", object_type="ExternalResearchJob", object_id=str(job_id), detail=f"citations={len(citations)}"))
                 else:
                     current_job.status = "failed"; current_job.error = failure
+                    db.session.add(ExternalResearchJobEvent(project_id=current_job.project_id, job_id=current_job.id, event_type="failed", actor="background-worker", detail="Provider request failed; no local knowledge changed"))
                     db.session.add(AuditEvent(action="external_research.fail", object_type="ExternalResearchJob", object_id=str(job_id), detail=failure[:240]))
                 db.session.commit()
         app.config["RESEARCH_TASK_SUBMITTER"](run_research)
@@ -966,6 +994,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             document = ingest_external_citation(project_id=project.id, job_id=job.id, citation_index=citation_index, title=citation.get("title", ""), url=citation.get("url", ""), excerpt=citation.get("excerpt", ""), data_dir=app.config["DATA_DIR"])
             promotion = ExternalResearchPromotion(project_id=project.id, job_id=job.id, citation_index=citation_index, document_id=document.id, promoted_by=current_user.username)
             db.session.add(promotion); db.session.add(DocumentVersion(project_id=project.id, document_id=document.id, family_id=str(uuid4()), version_number=1)); db.session.flush()
+            db.session.add(ExternalResearchJobEvent(project_id=project.id, job_id=job.id, event_type="citation_promoted", actor=current_user.username, detail=f"Citation {citation_index + 1} saved as local document #{document.id}"))
             audit("external_research.promote", "ExternalResearchPromotion", promotion.id, f"job={job.id} citation={citation_index} document={document.id}"); db.session.commit()
             flash(f"Added '{document.title}' to local project knowledge.", "success")
         except KnowledgeIngestionError as exc:

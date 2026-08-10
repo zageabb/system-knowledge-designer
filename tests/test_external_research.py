@@ -55,6 +55,21 @@ def test_confirmed_research_persists_citations_and_failure_is_local_only(tmp_pat
     with app.app_context(): assert db.session.get(ExternalResearchJob, failed_id).status == "failed"
 
 
+def test_external_research_activity_panel_persists_and_exposes_background_stages(tmp_path, monkeypatch):
+    app = make_app(tmp_path); project_id, revision_id, dataset_id = prepare(app); client = app.test_client(); client.post("/login", data={"username": "admin", "password": "test-password"})
+    with app.app_context(): set_bool(EXTERNAL_RESEARCH_ENABLED, True); db.session.commit()
+    monkeypatch.setattr(app_module, "search_wikipedia", lambda query: [ResearchCitation(title="Procurement", url="https://en.wikipedia.org/?curid=1", excerpt="Public purchasing")])
+    prepared = client.post(f"/projects/{project_id}/research", data={"query": "public procurement governance"}, follow_redirects=True)
+    assert prepared.status_code == 200 and b"LIVE RESEARCH ACTIVITY" in prepared.data and b"prepared" in prepared.data
+    with app.app_context(): job_id = ExternalResearchJob.query.one().id
+    client.post(f"/projects/{project_id}/research/{job_id}/send")
+    activity = client.get(f"/projects/{project_id}/research/activity")
+    assert activity.status_code == 200 and activity.json["running"] == 0
+    event_types = [event["event_type"] for event in activity.json["events"]]
+    assert event_types[:3] == ["completed", "provider_started", "prepared"]
+    assert "Provider returned 1 bounded citation" in activity.json["events"][0]["detail"]
+
+
 def test_selected_citation_is_explicitly_promoted_once_with_provenance(tmp_path, monkeypatch):
     app = make_app(tmp_path); project_id, revision_id, dataset_id = prepare(app); client = app.test_client(); client.post("/login", data={"username": "admin", "password": "test-password"})
     with app.app_context(): set_bool(EXTERNAL_RESEARCH_ENABLED, True); db.session.commit()

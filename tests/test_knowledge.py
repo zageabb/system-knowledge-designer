@@ -99,6 +99,16 @@ def test_federated_search_source_filter_limits_families(tmp_path):
     assert b"Representative sample values" not in response.data
 
 
+def test_local_search_shows_deterministic_activity_panel(tmp_path):
+    app = make_app(tmp_path); client = app.test_client(); client.post("/login", data={"username": "admin", "password": "test-password"})
+    project_id, revision_id, dataset_id = prepare_model(app)
+    response = client.get(f"/projects/{project_id}/knowledge?q=supplier_id&source=all")
+    assert response.status_code == 200 and b"SEARCH ACTIVITY" in response.data
+    assert b"Parse query" in response.data and b"Search catalogue" in response.data
+    assert b"Traverse relationships" in response.data and b"Search document index" in response.data
+    assert b"Scan sample values" in response.data and b"Assemble results" in response.data
+
+
 def test_csv_upload_uses_row_range_citations(tmp_path):
     app = make_app(tmp_path); project_id = prepare(app); client = app.test_client(); client.post("/login", data={"username": "admin", "password": "test-password"})
     response = client.post(f"/projects/{project_id}/knowledge", data={

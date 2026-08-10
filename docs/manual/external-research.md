@@ -8,11 +8,13 @@ Enter a public research question and select **Prepare sanitised query**. This lo
 
 The activity card displays both the original local question and the exact outbound text. Nothing is sent during preparation. When external research is enabled, select **Confirm and send to Wikipedia** to make the request. A prepared query cannot be edited invisibly; prepare another job if the outbound wording is unsuitable.
 
+The **Live Research Activity** table on the right records the actual stages separately from the results: local sanitisation, confirmation/provider start, background completion or failure, cancellation, retry creation and citation promotion. While a request is running, the table polls the project-scoped activity endpoint every three seconds and shows the running-job count. Activity details are bounded and do not expose private configuration or filesystem paths.
+
 ## Results, citations and failures
 
 The job records proposed, running, completed or failed status. Completed jobs retain up to five source titles, fixed Wikipedia URLs and short excerpts. External links open separately with opener access disabled.
 
-Select **Cancel unsent proposal** to cancel a prepared query before it reaches the provider. Only `proposed` jobs can be cancelled. Once **Confirm and send** starts the current synchronous provider request, it cannot be interrupted from the browser.
+Select **Cancel unsent proposal** to cancel a prepared query before it reaches the provider. Running research can also be cooperatively cancelled; any provider response that arrives afterward is discarded rather than persisted.
 
 For a failed job, select **Prepare reviewed retry**. This creates a new proposed job with the same already-sanitised outbound text and records its source job. Retry does not contact Wikipedia automatically: review the new card and select **Confirm and send** separately. Completed, running, proposed and cancelled jobs cannot use the retry action.
 
