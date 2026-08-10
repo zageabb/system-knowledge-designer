@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block title %}{{project.name}} · Workbench{% endblock %}
+{% block content %}
+<div class="work-head">
+  <div><a href="{{url_for('dashboard')}}">← Projects</a><h1>{{project.name}}</h1></div>
+  <div>
+    <a class="button" href="{{url_for('catalogue',project_id=project.id)}}">Catalogue</a>
+    <a class="button" href="{{url_for('sample_data',project_id=project.id)}}">Sample data</a>
+    <a class="button" href="{{url_for('ai_records',project_id=project.id)}}">AI record generator</a>
+    <a class="button" href="{{url_for('sql_workbench',project_id=project.id)}}">SQL Workbench</a>
+    <a class="button" href="{{url_for('knowledge',project_id=project.id)}}">Knowledge</a>
+    <a class="button" href="{{url_for('project_assistant',project_id=project.id)}}">Assistant</a>
+    <a class="button" href="{{url_for('external_research',project_id=project.id)}}">External research</a>
+    <a class="button" href="{{url_for('revisions',project_id=project.id)}}">Revision history</a>
+    {% if latest %}<form method="post" action="{{url_for('approve_revision',project_id=project.id,revision_id=latest.id)}}"><input type="hidden" name="csrf_token" value="{{csrf_token()}}"><button class="primary">Approve r{{latest.revision_number}}</button></form>{% endif %}
+  </div>
+</div>
+<form method="post" class="workbench">
+  <input type="hidden" name="csrf_token" value="{{csrf_token()}}">
+  <input type="hidden" name="base_revision_number" value="{{latest.revision_number if latest else 0}}">
+  <section class="pane source">
+    <div class="pane-title"><strong>ER source</strong><span>.erd</span></div>
+    <textarea id="source" name="source" spellcheck="false">{{source}}</textarea>
+    <div class="savebar"><input name="revision_note" placeholder="Revision note"><button name="action" value="validate">Validate</button><button class="primary" name="action" value="save">Create revision</button></div>
+  </section>
+  <div class="split"></div>
+  <section class="pane preview">
+    <div class="pane-title"><strong>Diagram preview</strong><div><button type="button" id="minus">−</button><button type="button" id="reset">Fit</button><button type="button" id="plus">+</button></div></div>
+    {% if error %}<div class="validation-error"><strong>Validation failed</strong><p>{{error}}</p></div>{% elif preview_svg %}<div class="svg-preview" id="svgPreview">{{preview_svg|safe}}</div>{% endif %}
+    {% if latest %}<div class="exports" role="group" aria-label="Revision export actions"><a class="button" href="{{url_for('export_render',project_id=project.id,revision_id=latest.id,format_name='svg')}}">Export SVG</a><a class="button" href="{{url_for('export_render',project_id=project.id,revision_id=latest.id,format_name='png',scale=4)}}">Export PNG 4×</a><a class="button" href="{{url_for('export_source',project_id=project.id,revision_id=latest.id)}}">Export ER source</a><a class="button" href="{{url_for('export_model',project_id=project.id,revision_id=latest.id)}}">Export model JSON</a></div>{% endif %}
+  </section>
+  <div class="split"></div>
+  <aside class="pane assistant">
+    <div class="pane-title"><strong>Model inspector</strong></div>
+    {% if model %}<p class="ok">✓ Parsed and validated</p><dl><dt>Tables</dt><dd>{{model.tables|length}}</dd><dt>Fields</dt><dd>{{model.tables|map(attribute='columns')|map('length')|sum}}</dd><dt>Relationships</dt><dd>{{model.relationships|length}}</dd><dt>Direction</dt><dd>{{model.direction}}</dd></dl><h3>Authority</h3><p>The structured revision generated from this source defines the schema.</p>{% else %}<p>Validate the source to inspect its structured model.</p>{% endif %}
+  </aside>
+</form>
+{% endblock %}
+{% block scripts %}<script>const preview=document.getElementById('svgPreview');let scale=1;function applyZoom(){if(preview)preview.style.transform=`scale(${scale})`}document.getElementById('minus')?.addEventListener('click',()=>{scale=Math.max(.25,scale*.8);applyZoom()});document.getElementById('plus')?.addEventListener('click',()=>{scale=Math.min(4,scale*1.25);applyZoom()});document.getElementById('reset')?.addEventListener('click',()=>{scale=1;applyZoom()});</script>{% endblock %}

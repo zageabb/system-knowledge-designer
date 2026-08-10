@@ -1,0 +1,27 @@
+.ai-record-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(380px, 1fr) minmax(340px, 430px);
+  gap: 16px;
+  min-width: 1040px;
+  min-height: calc(100dvh - 190px);
+}
+
+.ai-record-layout > .card { padding: 0; min-width: 0; overflow: auto; }
+.ai-table-list { display: grid; padding: 10px; gap: 6px; }
+.ai-table-item { display: grid; gap: 4px; padding: 12px; color: #14213d; text-decoration: none; border: 1px solid transparent; border-radius: 8px; }
+.ai-table-item span,.small-muted { color: #667085; font-size: 12px; }
+.ai-table-item:hover { background: #f1f5f9; }
+.ai-table-item.active { color: #0b5cad; background: #e8f2ff; border-color: #b9d7f5; }
+.ai-generator form { padding: 18px; }
+.ai-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.schema-context { margin: 0 18px 18px; padding: 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+.schema-context > div { display: flex; justify-content: space-between; gap: 16px; padding: 7px 0; border-bottom: 1px solid #e2e8f0; }
+.schema-context > div:last-child { border-bottom: 0; }
+.ai-proposals { max-height: calc(100dvh - 190px); }
+.proposal-card { padding: 14px; border-bottom: 1px solid #d8dee9; }
+.proposal-card > div:first-child { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.proposal-card pre { max-height: 310px; overflow: auto; padding: 12px; background: #101a2d; color: #dbeafe; border-radius: 8px; font-size: 11px; }
+
+@media (max-width: 1100px) {
+  .ai-record-layout { grid-template-columns: 230px 460px 380px; }
+}

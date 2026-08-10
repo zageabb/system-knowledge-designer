@@ -1,0 +1,94 @@
+html,
+body {
+  min-height: 100%;
+  max-width: 100%;
+  overflow: auto;
+}
+
+header {
+  min-width: max-content;
+}
+
+main {
+  min-width: 0;
+  overflow: visible;
+}
+
+.workbench {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 960px;
+  min-height: 540px;
+  height: calc(100dvh - 150px);
+  overflow: auto;
+}
+
+.workbench .pane {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.workbench .source {
+  overflow: hidden;
+}
+
+.workbench .source textarea {
+  min-height: 0;
+  overflow: auto;
+}
+
+.workbench .savebar,
+.workbench .pane-title {
+  flex: 0 0 auto;
+}
+
+.workbench .exports {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  border-top: 1px solid #d8dee9;
+  background: #f8fafc;
+}
+
+.workbench .exports .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.workbench .preview,
+.workbench .assistant {
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.workbench .preview {
+  overflow-x: scroll;
+  overflow-y: scroll;
+}
+
+.workbench .svg-preview {
+  box-sizing: content-box;
+  width: max-content;
+  min-width: 100%;
+  transform-origin: top left;
+}
+
+.workbench .svg-preview svg {
+  display: block;
+  max-width: none;
+  height: auto;
+}
+
+@media (max-width: 1050px), (max-height: 720px) {
+  main {
+    overflow-x: auto;
+  }
+
+  .workbench {
+    height: max(540px, calc(100dvh - 150px));
+  }
+}

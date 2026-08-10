@@ -1,0 +1,4 @@
+{% extends 'base.html' %}{% block title %}Compare revisions · {{project.name}}{% endblock %}{% block content %}
+<div class="page-head"><div><a href="{{url_for('revisions',project_id=project.id)}}">← Revision history</a><h1>Compare r{{older.revision_number}} → r{{newer.revision_number}}</h1><p>Unified ER-source diff. Catalogue/model comparison will build on the structured snapshots.</p></div></div>
+<section class="card"><pre style="overflow:auto;white-space:pre;line-height:1.5">{{source_diff or 'No source changes.'}}</pre></section>
+{% endblock %}

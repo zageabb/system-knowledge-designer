@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-head"><div><a href="{{url_for('workbench',project_id=project.id)}}">← Workbench</a><h1>{{project.name}} revisions</h1><p>Every restore creates a new draft; history is never overwritten.</p></div></div>
+<table><thead><tr><th>Revision</th><th>Status</th><th>Model hash</th><th>Note</th><th>Created</th><th>Actions</th></tr></thead><tbody>
+{% for r in revisions %}<tr><td>r{{r.revision_number}}</td><td><span class="status">{{r.status}}</span></td><td><code>{{r.model_hash[:12]}}</code></td><td>{{r.revision_note or '—'}}</td><td>{{r.created_at.strftime('%Y-%m-%d %H:%M')}}</td><td><div class="actions"><a class="button" href="{{url_for('catalogue',project_id=project.id,revision_id=r.id)}}">Catalogue</a>{% if not loop.last %}<a class="button" href="{{url_for('compare_revisions',project_id=project.id,older_id=revisions[loop.index].id,newer_id=r.id)}}">Compare prior</a>{% endif %}<form method="post" action="{{url_for('restore_revision',project_id=project.id,revision_id=r.id)}}"><input type="hidden" name="csrf_token" value="{{csrf_token()}}"><button>Restore as new</button></form></div></td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}
