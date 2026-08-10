@@ -13,10 +13,10 @@ from sqlalchemy.exc import IntegrityError
 
 from config import Config
 from database import db
-from models import AIAction, AssistantContextLink, AssistantExchange, AssistantToolCall, AuditEvent, ChunkKnowledgeLink, CrossProjectAttachment, DiagramRevision, DocumentChunk, DocumentVersion, EvidenceRecord, ExternalResearchJob, ExternalResearchJobEvent, ExternalResearchPromotion, KnowledgeDocument, KnowledgeLink, ProjectAlias, ProjectIntegrityScan, ProjectLink, RelationshipDefinition, SampleDataset, SampleRowDefinition, SandboxBuild, SQLExecution, SystemProject, TableDefinition, User, utcnow
+from models import AIAction, AssistantContextLink, AssistantExchange, AssistantToolCall, AuditEvent, ChunkKnowledgeLink, CrossProjectAttachment, DiagramRevision, DocumentChunk, DocumentVersion, ERInclude, EvidenceRecord, ExternalResearchJob, ExternalResearchJobEvent, ExternalResearchPromotion, KnowledgeDocument, KnowledgeLink, ProjectAlias, ProjectIntegrityScan, ProjectLink, RelationshipDefinition, SampleDataset, SampleRowDefinition, SandboxBuild, SQLExecution, SystemProject, TableDefinition, User, utcnow
 from services.er_language import ERParseError, parse_er_source
 from services.graph_renderer import model_to_dot, render_graphviz, render_graphviz_bytes
-from services.revisions import create_revision, unified_source_diff
+from services.revisions import create_revision, revision_model, unified_source_diff
 from services.settings import CODEX_CONTROL_ENABLED, EXTERNAL_RESEARCH_ENABLED, get_bool, get_text, set_bool, set_text
 from routes.codex_api import codex_api_bp
 from services.sample_data import SampleValidationError, validate_dataset_relationships, validate_row
@@ -29,9 +29,11 @@ from services.federated_search import knowledge_coverage, search_cross_project_e
 from services.grounded_assistant import GroundedAnswerError, generate_grounded_answer, plan_read_tools
 from services.ai_sql import SQLProposalError, generate_sql_proposal
 from services.assistant_tools import AssistantToolError, READ_TOOLS, execute_read_tool
-from services.assistant_actions import AssistantActionError, KnowledgeLinkProposal, apply_knowledge_link, plan_mutation_actions
+from services.assistant_actions import AssistantActionError, KnowledgeLinkProposal, apply_chunk_link, apply_knowledge_link, plan_mutation_actions
 from services.external_research import ExternalResearchError, sanitise_external_query, search_wikipedia, submit_research_task
 from services.project_graph import ProjectGraphError, RELATIONSHIP_TYPES, normalize_alias, projects_are_linked, scan_project_integrity, traverse_projects, validate_project_link
+from services.er_includes import include_sources, normalize_include_name
+from services.readiness import readiness_report
 
 login_manager = LoginManager()
 csrf = CSRFProtect()
@@ -148,18 +150,19 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     @login_required
     def workbench(project_id):
         project = db.get_or_404(SystemProject, project_id)
+        managed_includes = ERInclude.query.filter_by(project_id=project.id).order_by(ERInclude.name).all()
         latest = DiagramRevision.query.filter_by(project_id=project.id).order_by(DiagramRevision.revision_number.desc()).first()
         source = request.form.get("source") if request.method == "POST" else (latest.source if latest else starter_source(project.name))
         model = None; dot = None; preview_svg = None; error = None
         try:
-            model = parse_er_source(source); dot = model_to_dot(model)
+            model = parse_er_source(source, includes=include_sources(project.id)); dot = model_to_dot(model)
             preview_svg = render_graphviz_bytes(dot, "svg").decode("utf-8")
             if request.method == "POST" and request.form.get("action") == "save":
                 expected = request.form.get("base_revision_number", type=int)
                 current_number = latest.revision_number if latest else 0
                 if expected is not None and expected != current_number:
                     flash(f"This project changed after the editor was opened (expected r{expected}, now r{current_number}). Reload and reapply your changes.", "danger")
-                    return render_template("workbench.html", project=project, source=source, model=model, dot=dot, preview_svg=preview_svg, error=None, latest=latest), 409
+                    return render_template("workbench.html", project=project, source=source, model=model, dot=dot, preview_svg=preview_svg, error=None, latest=latest, managed_includes=managed_includes), 409
                 latest = create_revision(project, source, model, request.form.get("revision_note", "")); audit("revision.create", "DiagramRevision", latest.id, latest.model_hash); db.session.commit(); flash(f"Draft revision {latest.revision_number} created.", "success")
             elif request.method == "POST": flash("Source is valid.", "success")
         except ERParseError as exc:
@@ -167,7 +170,31 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             error = location + str(exc)
         except (RuntimeError, FileNotFoundError) as exc:
             error = f"Graphviz preview is unavailable: {exc}"
-        return render_template("workbench.html", project=project, source=source, model=model, dot=dot, preview_svg=preview_svg, error=error, latest=latest)
+        return render_template("workbench.html", project=project, source=source, model=model, dot=dot, preview_svg=preview_svg, error=error, latest=latest, managed_includes=managed_includes)
+
+    @app.post("/projects/<int:project_id>/includes")
+    @login_required
+    def create_er_include(project_id):
+        project = db.get_or_404(SystemProject, project_id); name = request.form.get("name", "").strip(); source = request.form.get("source", "").strip()
+        try:
+            normalized = normalize_include_name(name)
+            if not source: raise ValueError("Include source is required.")
+            if ERInclude.query.filter_by(project_id=project.id, normalized_name=normalized).first(): raise ValueError("That managed include name already exists in this project.")
+            candidate_sources = include_sources(project.id); candidate_sources[normalized] = source
+            parse_er_source(source, includes=candidate_sources)
+            record = ERInclude(project_id=project.id, name=name[:160], normalized_name=normalized, source=source, created_by=current_user.username)
+            db.session.add(record); db.session.flush(); audit("er_include.create", "ERInclude", record.id, f"project={project.id} name={normalized}"); db.session.commit(); flash(f"Managed include '{name}' created.", "success")
+        except (ValueError, ERParseError) as exc:
+            db.session.rollback(); flash(str(exc), "danger")
+        return redirect(url_for("workbench", project_id=project.id))
+
+    @app.post("/projects/<int:project_id>/includes/<int:include_id>/delete")
+    @login_required
+    def delete_er_include(project_id, include_id):
+        project = db.get_or_404(SystemProject, project_id); record = db.get_or_404(ERInclude, include_id)
+        if record.project_id != project.id: return ("Include does not belong to project", 400)
+        name = record.name; audit("er_include.delete", "ERInclude", record.id, f"name={record.normalized_name}"); db.session.delete(record); db.session.commit(); flash(f"Managed include '{name}' deleted. Existing revisions retain their resolved model snapshots.", "success")
+        return redirect(url_for("workbench", project_id=project.id))
 
     @app.post("/projects/<int:project_id>/revisions/<int:revision_id>/approve")
     @login_required
@@ -184,7 +211,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     def export_render(project_id, revision_id, format_name):
         revision = db.get_or_404(DiagramRevision, revision_id)
         if revision.project_id != project_id or format_name not in {"svg", "png"}: return ("Invalid export", 400)
-        model = parse_er_source(revision.source); scale = max(1, min(int(request.args.get("scale", 1)), 8))
+        model = revision_model(revision); scale = max(1, min(int(request.args.get("scale", 1)), 8))
         path = app.config["DATA_DIR"] / str(project_id) / "renders" / f"r{revision.revision_number}-{scale}x.{format_name}"
         try: render_graphviz(model_to_dot(model), path, format_name, scale)
         except (RuntimeError, FileNotFoundError) as exc: return (f"Graphviz is unavailable: {exc}", 503)
@@ -237,7 +264,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     def restore_revision(project_id, revision_id):
         project = db.get_or_404(SystemProject, project_id); original = db.get_or_404(DiagramRevision, revision_id)
         if original.project_id != project.id: return ("Revision does not belong to project", 400)
-        restored = create_revision(project, original.source, parse_er_source(original.source), f"Restored from revision {original.revision_number}")
+        restored = create_revision(project, original.source, revision_model(original), f"Restored from revision {original.revision_number}")
         audit("revision.restore", "DiagramRevision", restored.id, f"from={original.id}"); db.session.commit()
         flash(f"Revision {original.revision_number} restored as new draft r{restored.revision_number}.", "success")
         return redirect(url_for("revisions", project_id=project.id))
@@ -249,7 +276,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         datasets = SampleDataset.query.filter_by(project_id=project.id).order_by(SampleDataset.updated_at.desc()).all()
         builds = SandboxBuild.query.filter_by(project_id=project.id).order_by(SandboxBuild.id.desc()).limit(10).all()
         active_revision = db.session.get(DiagramRevision, project.active_revision_id) if project.active_revision_id else None
-        model = parse_er_source(active_revision.source) if active_revision else None
+        model = revision_model(active_revision) if active_revision else None
         return render_template("sample_data.html", project=project, datasets=datasets, builds=builds, active_revision=active_revision, model=model)
 
     @app.post("/projects/<int:project_id>/datasets")
@@ -296,7 +323,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         project = db.get_or_404(SystemProject, project_id); dataset = db.get_or_404(SampleDataset, dataset_id)
         if dataset.project_id != project.id: return ("Dataset does not belong to project", 400)
         if not project.active_revision_id: flash("Approve a model revision before adding sample rows.", "danger"); return redirect(url_for("sample_data", project_id=project.id))
-        revision = db.session.get(DiagramRevision, project.active_revision_id); model = parse_er_source(revision.source)
+        revision = db.session.get(DiagramRevision, project.active_revision_id); model = revision_model(revision)
         try:
             raw = json.loads(request.form.get("values_json", "{}"))
             if not isinstance(raw, dict): raise SampleValidationError("Row values must be a JSON object.")
@@ -314,7 +341,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         project = db.get_or_404(SystemProject, project_id); dataset = db.get_or_404(SampleDataset, dataset_id); row = db.get_or_404(SampleRowDefinition, row_id)
         if dataset.project_id != project.id or row.dataset_id != dataset.id: return ("Sample row does not belong to project dataset", 400)
         if not project.active_revision_id: flash("Approve a model revision before editing sample rows.", "danger"); return redirect(url_for("sample_data", project_id=project.id))
-        model = parse_er_source(db.session.get(DiagramRevision, project.active_revision_id).source)
+        model = revision_model(db.session.get(DiagramRevision, project.active_revision_id))
         try:
             raw = json.loads(request.form.get("values_json", "{}"))
             if not isinstance(raw, dict): raise SampleValidationError("Row values must be a JSON object.")
@@ -332,7 +359,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         project = db.get_or_404(SystemProject, project_id); dataset = db.get_or_404(SampleDataset, dataset_id); row = db.get_or_404(SampleRowDefinition, row_id)
         if dataset.project_id != project.id or row.dataset_id != dataset.id: return ("Sample row does not belong to project dataset", 400)
         if not project.active_revision_id: flash("Approve a model revision before deleting sample rows.", "danger"); return redirect(url_for("sample_data", project_id=project.id))
-        model = parse_er_source(db.session.get(DiagramRevision, project.active_revision_id).source)
+        model = revision_model(db.session.get(DiagramRevision, project.active_revision_id))
         try: validate_dataset_relationships(model, _dataset_rows(dataset, excluded_row_id=row.id))
         except SampleValidationError as exc:
             flash(f"Sample row deletion rejected: {exc}", "danger"); return redirect(url_for("sample_data", project_id=project.id))
@@ -362,7 +389,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         if request.method == "POST":
             if not build: error = "Build a successful sandbox before validating SQL."
             else:
-                revision = db.session.get(DiagramRevision, build.revision_id); model = parse_er_source(revision.source)
+                revision = db.session.get(DiagramRevision, build.revision_id); model = revision_model(revision)
                 try:
                     validation = validate_readonly_sql(statement, model)
                     if request.form.get("action") == "execute":
@@ -371,11 +398,11 @@ def create_app(config_overrides: dict | None = None) -> Flask:
                         db.session.add(execution); db.session.flush(); audit("sql.execute", "SQLExecution", execution.id, f"rows={execution.row_count}"); db.session.commit()
                 except (SQLValidationError, sqlite3.Error) as exc: error = str(exc)
         elif request.args.get("highlight") == "1" and project.active_revision_id:
-            model = parse_er_source(db.session.get(DiagramRevision, project.active_revision_id).source)
+            model = revision_model(db.session.get(DiagramRevision, project.active_revision_id))
             try: validation = validate_readonly_sql(statement, model)
             except SQLValidationError as exc: error = str(exc)
         if validation and project.active_revision_id:
-            model = parse_er_source(db.session.get(DiagramRevision, project.active_revision_id).source)
+            model = revision_model(db.session.get(DiagramRevision, project.active_revision_id))
             table_lookup = {table.name.casefold(): table.name for table in model.tables}
             column_lookup = {}
             for table in model.tables:
@@ -396,7 +423,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         project = db.get_or_404(SystemProject, project_id); question = request.form.get("question", "").strip()
         if not question: flash("Enter a data question.", "danger"); return redirect(url_for("sql_workbench", project_id=project.id))
         if not project.active_revision_id: flash("Approve a model revision before generating SQL.", "danger"); return redirect(url_for("sql_workbench", project_id=project.id))
-        revision = db.session.get(DiagramRevision, project.active_revision_id); model = parse_er_source(revision.source)
+        revision = db.session.get(DiagramRevision, project.active_revision_id); model = revision_model(revision)
         try:
             configured_url = get_text("ollama_url", app.config["OLLAMA_URL"]); model_name = get_text("ollama_model", app.config["OLLAMA_MODEL"])
             proposal = generate_sql_proposal(question=question, model=model, ollama_url=configured_url, ollama_model=model_name)
@@ -415,7 +442,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         if decision != "confirm": return ("Unknown decision", 400)
         payload = json.loads(action.payload_json)
         if payload.get("model_revision_id") != project.active_revision_id: flash("The active model changed; generate a new SQL proposal.", "danger"); return redirect(url_for("sql_workbench", project_id=project.id))
-        model = parse_er_source(db.session.get(DiagramRevision, project.active_revision_id).source)
+        model = revision_model(db.session.get(DiagramRevision, project.active_revision_id))
         try: validation = validate_readonly_sql(payload["statement"], model)
         except SQLValidationError as exc: flash(f"SQL proposal is no longer valid: {exc}", "danger"); return redirect(url_for("sql_workbench", project_id=project.id))
         action.status = "applied"; action.confirmed_at = utcnow(); action.result_json = json.dumps({"loaded_into_workbench": True}); audit("ai_sql.confirm", "AIAction", action.id); db.session.commit()
@@ -448,7 +475,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         documents = KnowledgeDocument.query.filter_by(project_id=project.id).order_by(KnowledgeDocument.updated_at.desc()).all()
         link_targets = []; active_model = None
         if project.active_revision_id:
-            active_model = parse_er_source(db.session.get(DiagramRevision, project.active_revision_id).source)
+            active_model = revision_model(db.session.get(DiagramRevision, project.active_revision_id))
             for table in TableDefinition.query.filter_by(project_id=project.id, revision_id=project.active_revision_id).order_by(TableDefinition.name).all():
                 link_targets.append(("table", table.name, f"Table · {table.name}"))
                 link_targets.extend(("column", f"{table.name}.{column.name}", f"Column · {table.name}.{column.name}") for column in table.columns)
@@ -463,7 +490,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         if chunk.document.project_id != project.id: return ("Citation does not belong to project", 400)
         targets = []
         if project.active_revision_id:
-            model = parse_er_source(db.session.get(DiagramRevision, project.active_revision_id).source)
+            model = revision_model(db.session.get(DiagramRevision, project.active_revision_id))
             for table in model.tables:
                 targets.append(("table", table.name, f"Table · {table.name}"))
                 targets.extend(("column", f"{table.name}.{column.name}", f"Column · {table.name}.{column.name}") for column in table.columns)
@@ -514,7 +541,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         if document.project_id != project.id: return ("Document does not belong to project", 400)
         if not project.active_revision_id: flash("Approve a model revision before linking documents.", "danger"); return redirect(url_for("knowledge", project_id=project.id))
         target_type, separator, target_key = request.form.get("target", "").partition("|")
-        model = parse_er_source(db.session.get(DiagramRevision, project.active_revision_id).source)
+        model = revision_model(db.session.get(DiagramRevision, project.active_revision_id))
         valid_targets = {("table", table.name) for table in model.tables}
         valid_targets.update(("column", f"{table.name}.{column.name}") for table in model.tables for column in table.columns)
         if not separator or (target_type, target_key) not in valid_targets:
@@ -541,7 +568,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         if chunk.document.project_id != project.id: return ("Citation does not belong to project", 400)
         if not project.active_revision_id: flash("Approve a model revision before linking evidence.", "danger"); return redirect(url_for("knowledge_chunk", project_id=project.id, chunk_id=chunk.id))
         target_type, separator, target_key = request.form.get("target", "").partition("|")
-        model = parse_er_source(db.session.get(DiagramRevision, project.active_revision_id).source)
+        model = revision_model(db.session.get(DiagramRevision, project.active_revision_id))
         valid_targets = {("table", table.name) for table in model.tables}; valid_targets.update(("column", f"{table.name}.{column.name}") for table in model.tables for column in table.columns)
         if not separator or (target_type, target_key) not in valid_targets:
             flash("The selected model target is not valid for the active revision.", "danger"); return redirect(url_for("knowledge_chunk", project_id=project.id, chunk_id=chunk.id))
@@ -599,25 +626,42 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             question = request.form.get("question", "").strip()
             if not question: flash("Enter a question.", "danger"); return redirect(url_for("project_assistant", project_id=project.id))
             evidence = []
-            context_id = request.form.get("context_exchange_id", type=int)
-            context_exchange = db.session.get(AssistantExchange, context_id) if context_id else None
-            if context_exchange and context_exchange.project_id != project.id:
-                flash("The selected context does not belong to this project.", "danger"); return redirect(url_for("project_assistant", project_id=project.id))
-            if context_exchange:
+            raw_context_ids = request.form.getlist("context_exchange_ids")
+            legacy_context_id = request.form.get("context_exchange_id")
+            if legacy_context_id and not raw_context_ids: raw_context_ids = [legacy_context_id]
+            try:
+                context_ids = list(dict.fromkeys(int(value) for value in raw_context_ids if value))
+            except ValueError:
+                flash("Invalid follow-up context selection.", "danger"); return redirect(url_for("project_assistant", project_id=project.id))
+            if len(context_ids) > 3:
+                flash("Select no more than three prior exchanges.", "danger"); return redirect(url_for("project_assistant", project_id=project.id))
+            context_exchanges = [db.session.get(AssistantExchange, context_id) for context_id in context_ids]
+            if any(exchange is None or exchange.project_id != project.id for exchange in context_exchanges):
+                flash("A selected context does not belong to this project.", "danger"); return redirect(url_for("project_assistant", project_id=project.id))
+            for context_exchange in context_exchanges:
                 prior_answer = json.loads(context_exchange.answer_json)
-                evidence.append({"evidence_id": f"context:{context_exchange.id}", "source": "conversation", "title": f"Prior exchange #{context_exchange.id}", "locator": context_exchange.question[:240], "excerpt": json.dumps({"answer": prior_answer.get("answer", "")[:4000], "citations": prior_answer.get("citations", [])[:20]}, sort_keys=True)})
+                evidence.append({"evidence_id": f"context:{context_exchange.id}", "source": "conversation", "title": f"Prior exchange #{context_exchange.id}", "locator": context_exchange.question[:240], "excerpt": json.dumps({"answer": prior_answer.get("answer", "")[:2000], "citations": prior_answer.get("citations", [])[:10]}, sort_keys=True)})
             for prefix, items in (("schema", search_schema(project=project, query=question, limit=8)), ("relationship", search_relationships(project=project, query=question, limit=8)), ("document", search_documents(project_id=project.id, query=question, limit=8)), ("sample", search_sample_values(project_id=project.id, query=question, limit=8))):
                 for index, item in enumerate(items):
                     evidence_id = f"chunk:{item['chunk_id']}" if prefix == "document" else f"{prefix}:{index}"
                     evidence.append({"evidence_id": evidence_id, "source": prefix, "title": item["title"], "locator": item["locator"], "excerpt": item["excerpt"]})
             try:
                 configured_url = get_text("ollama_url", app.config["OLLAMA_URL"]); model_name = get_text("ollama_model", app.config["OLLAMA_MODEL"])
-                model = parse_er_source(db.session.get(DiagramRevision, project.active_revision_id).source) if project.active_revision_id else None
+                model = revision_model(db.session.get(DiagramRevision, project.active_revision_id)) if project.active_revision_id else None
+                if request.form.get("use_sql") == "on":
+                    if not model: raise GroundedAnswerError("Approve a model and build its sandbox before asking data questions.")
+                    proposal = generate_sql_proposal(question=question, model=model, ollama_url=configured_url, ollama_model=model_name)
+                    result = execute_read_tool(tool_name="sql.query", argument=proposal.statement, project=project, model=model, allowed_root=app.config["DATA_DIR"])
+                    persist_assistant_sql_execution(project, result)
+                    call = AssistantToolCall(project_id=project.id, tool_name="sql.query", input_json=json.dumps({"argument": proposal.statement, "reason": proposal.explanation, "question": question[:1000]}, sort_keys=True), result_json=json.dumps(result, sort_keys=True), status="completed", requested_by=f"ollama:{current_user.username}")
+                    db.session.add(call); db.session.flush(); audit("assistant_tool.auto", "AssistantToolCall", call.id, "tool=sql.query status=completed")
+                    evidence.append({"evidence_id": f"tool:{call.id}", "source": "tool", "title": "Validated sandbox SQL", "locator": proposal.explanation or "AI-built read-only query", "excerpt": json.dumps(result, sort_keys=True)[:5000]})
                 if request.form.get("use_tools") == "on":
-                    plan = plan_read_tools(question=question, evidence=evidence, allowed_tools=READ_TOOLS, ollama_url=configured_url, ollama_model=model_name)
+                    planner_tools = {name: description for name, description in READ_TOOLS.items() if name not in {"sql.query", "samples.aggregate"}}
+                    plan = plan_read_tools(question=question, evidence=evidence, allowed_tools=planner_tools, ollama_url=configured_url, ollama_model=model_name)
                     for planned in plan.tool_requests:
                         try:
-                            result = execute_read_tool(tool_name=planned.tool_name, argument=planned.argument, project=project, model=model); status = "completed"
+                            result = execute_read_tool(tool_name=planned.tool_name, argument=planned.argument, project=project, model=model, allowed_root=app.config["DATA_DIR"]); status = "completed"
                         except AssistantToolError as exc:
                             result = {"error": str(exc)}; status = "rejected"
                         call = AssistantToolCall(project_id=project.id, tool_name=planned.tool_name, input_json=json.dumps({"argument": planned.argument, "reason": planned.reason}), result_json=json.dumps(result, sort_keys=True), status=status, requested_by=f"ollama:{current_user.username}")
@@ -626,9 +670,9 @@ def create_app(config_overrides: dict | None = None) -> Flask:
                 answer = generate_grounded_answer(question=question, evidence=evidence, ollama_url=configured_url, ollama_model=model_name)
                 exchange = AssistantExchange(project_id=project.id, question=question, answer_json=answer.model_dump_json(), evidence_json=json.dumps(evidence, sort_keys=True), model_name=model_name, requested_by=current_user.username)
                 db.session.add(exchange); db.session.flush()
-                if context_exchange:
+                for context_exchange in context_exchanges:
                     db.session.add(AssistantContextLink(project_id=project.id, exchange_id=exchange.id, parent_exchange_id=context_exchange.id))
-                audit("assistant.answer", "AssistantExchange", exchange.id, f"evidence={len(evidence)} model={model_name} context={context_id or 'none'}"); db.session.commit()
+                audit("assistant.answer", "AssistantExchange", exchange.id, f"evidence={len(evidence)} model={model_name} contexts={context_ids or 'none'}"); db.session.commit()
                 if request.form.get("propose_actions") == "on":
                     documents = KnowledgeDocument.query.filter_by(project_id=project.id).order_by(KnowledgeDocument.id).limit(50).all()
                     plan = plan_mutation_actions(question=question, evidence=evidence, model=model, documents=documents, ollama_url=configured_url, ollama_model=model_name)
@@ -638,12 +682,14 @@ def create_app(config_overrides: dict | None = None) -> Flask:
                         db.session.add(action); db.session.flush(); audit("assistant_action.propose", "AIAction", action.id, f"action={proposed.action_name} exchange={exchange.id}")
                     db.session.commit()
                 return redirect(url_for("project_assistant", project_id=project.id, exchange=exchange.id))
-            except (AssistantActionError, GroundedAnswerError, OllamaError) as exc:
+            except (AssistantActionError, AssistantToolError, GroundedAnswerError, SQLProposalError, OllamaError) as exc:
                 db.session.rollback()
                 flash(str(exc), "danger"); return redirect(url_for("project_assistant", project_id=project.id))
         history = AssistantExchange.query.filter_by(project_id=project.id).order_by(AssistantExchange.id.desc()).limit(20).all(); tool_calls = AssistantToolCall.query.filter_by(project_id=project.id).order_by(AssistantToolCall.id.desc()).limit(20).all()
-        actions = AIAction.query.filter_by(project_id=project.id, action_type="knowledge.link_document").order_by(AIAction.id.desc()).limit(20).all()
-        context_links = {link.exchange_id: link.parent_exchange_id for link in AssistantContextLink.query.filter_by(project_id=project.id).all()}
+        actions = AIAction.query.filter(AIAction.project_id == project.id, AIAction.action_type.in_(["knowledge.link_document", "knowledge.link_chunk"])).order_by(AIAction.id.desc()).limit(20).all()
+        context_links = {}
+        for link in AssistantContextLink.query.filter_by(project_id=project.id).order_by(AssistantContextLink.id).all():
+            context_links.setdefault(link.exchange_id, []).append(link.parent_exchange_id)
         selected_id = request.args.get("exchange", type=int); selected = db.session.get(AssistantExchange, selected_id) if selected_id else (history[0] if history else None)
         if selected and selected.project_id != project.id: selected = None
         return render_template("assistant.html", project=project, history=history, selected=selected, read_tools=READ_TOOLS, tool_calls=tool_calls, actions=actions, context_links=context_links)
@@ -652,7 +698,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     @login_required
     def decide_assistant_action(project_id, action_id, decision):
         project = db.get_or_404(SystemProject, project_id); action = db.get_or_404(AIAction, action_id)
-        if action.project_id != project.id or action.action_type != "knowledge.link_document": return ("Assistant action does not belong to project", 400)
+        if action.project_id != project.id or action.action_type not in {"knowledge.link_document", "knowledge.link_chunk"}: return ("Assistant action does not belong to project", 400)
         if action.status != "proposed": flash("This action is no longer awaiting review.", "warning"); return redirect(url_for("project_assistant", project_id=project.id))
         if decision == "reject":
             action.status = "rejected"; audit("assistant_action.reject", "AIAction", action.id); db.session.commit(); flash("Assistant action rejected.", "success"); return redirect(url_for("project_assistant", project_id=project.id))
@@ -660,12 +706,17 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         payload = json.loads(action.payload_json)
         if payload.get("model_revision_id") != project.active_revision_id:
             flash("The active model changed; this action cannot be applied.", "danger"); return redirect(url_for("project_assistant", project_id=project.id))
-        model = parse_er_source(db.session.get(DiagramRevision, project.active_revision_id).source) if project.active_revision_id else None
+        model = revision_model(db.session.get(DiagramRevision, project.active_revision_id)) if project.active_revision_id else None
         try:
             proposal = KnowledgeLinkProposal.model_validate(payload)
-            link = apply_knowledge_link(project=project, model=model, revision_id=project.active_revision_id, proposal=proposal, created_by=current_user.username)
-            db.session.flush(); action.status = "applied"; action.confirmed_at = utcnow(); action.result_json = json.dumps({"knowledge_link_id": link.id})
-            audit("assistant_action.confirm", "AIAction", action.id, f"link={link.id}"); db.session.commit(); flash("Assistant-proposed document link applied.", "success")
+            if action.action_type == "knowledge.link_document":
+                link = apply_knowledge_link(project=project, model=model, revision_id=project.active_revision_id, proposal=proposal, created_by=current_user.username)
+                result_key = "knowledge_link_id"; message = "Assistant-proposed document link applied."
+            else:
+                link = apply_chunk_link(project=project, model=model, revision_id=project.active_revision_id, proposal=proposal, created_by=current_user.username)
+                result_key = "chunk_knowledge_link_id"; message = "Assistant-proposed document chunk link applied."
+            db.session.flush(); action.status = "applied"; action.confirmed_at = utcnow(); action.result_json = json.dumps({result_key: link.id})
+            audit("assistant_action.confirm", "AIAction", action.id, f"type={action.action_type} link={link.id}"); db.session.commit(); flash(message, "success")
         except (AssistantActionError, ValueError) as exc:
             db.session.rollback(); flash(f"Assistant action could not be applied: {exc}", "danger")
         return redirect(url_for("project_assistant", project_id=project.id))
@@ -674,9 +725,11 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     @login_required
     def run_assistant_tool(project_id):
         project = db.get_or_404(SystemProject, project_id); tool_name = request.form.get("tool_name", ""); argument = request.form.get("argument", "")
-        model = parse_er_source(db.session.get(DiagramRevision, project.active_revision_id).source) if project.active_revision_id else None
+        model = revision_model(db.session.get(DiagramRevision, project.active_revision_id)) if project.active_revision_id else None
         try:
-            result = execute_read_tool(tool_name=tool_name, argument=argument, project=project, model=model); status = "completed"; category = "success"
+            result = execute_read_tool(tool_name=tool_name, argument=argument, project=project, model=model, allowed_root=app.config["DATA_DIR"])
+            if tool_name in {"sql.query", "samples.aggregate"}: persist_assistant_sql_execution(project, result)
+            status = "completed"; category = "success"
         except AssistantToolError as exc:
             result = {"error": str(exc)}; status = "rejected"; category = "danger"
         call = AssistantToolCall(project_id=project.id, tool_name=tool_name[:100], input_json=json.dumps({"argument": argument[:12000]}), result_json=json.dumps(result, sort_keys=True), status=status, requested_by=current_user.username)
@@ -688,7 +741,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     def ai_records(project_id):
         project = db.get_or_404(SystemProject, project_id)
         revision = db.session.get(DiagramRevision, project.active_revision_id) if project.active_revision_id else None
-        model = parse_er_source(revision.source) if revision else None
+        model = revision_model(revision) if revision else None
         datasets = SampleDataset.query.filter_by(project_id=project.id).order_by(SampleDataset.updated_at.desc()).all()
         selected_table = request.values.get("table") or (model.tables[0].name if model and model.tables else None)
         dataset_values = request.values.getlist("dataset_id")
@@ -724,7 +777,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         payload = json.loads(action.payload_json)
         if not dataset or dataset.project_id != project.id or not revision or payload.get("model_revision_id") != revision.id:
             flash("The dataset or active model changed; generate a new proposal.", "danger"); return redirect(url_for("ai_records", project_id=project.id))
-        model = parse_er_source(revision.source); table_name = payload["table_name"]
+        model = revision_model(revision); table_name = payload["table_name"]
         related_rows = {}
         for stored_row in dataset.rows:
             related_rows.setdefault(stored_row.table_name, []).append(json.loads(stored_row.values_json))
@@ -888,6 +941,11 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     @app.get("/health")
     def health(): return {"status": "ok", "service": "system-knowledge-designer"}
 
+    @app.get("/ready")
+    def ready():
+        report, status = readiness_report(session=db.session, data_dir=app.config["DATA_DIR"])
+        return report, status
+
     with app.app_context():
         db.create_all()
         ensure_fts_index()
@@ -898,6 +956,13 @@ def create_app(config_overrides: dict | None = None) -> Flask:
 
 def audit(action, object_type, object_id, detail=""):
     db.session.add(AuditEvent(actor_id=current_user.id if current_user.is_authenticated else None, action=action, object_type=object_type, object_id=str(object_id), detail=detail))
+
+
+def persist_assistant_sql_execution(project, result: dict) -> SQLExecution:
+    execution = SQLExecution(project_id=project.id, sandbox_build_id=result["sandbox_build_id"], statement=result["statement"], referenced_objects_json=json.dumps({"tables": result["tables"], "columns": result["columns"]}, sort_keys=True), status="completed", row_count=result["row_count"], runtime_ms=result["runtime_ms"])
+    db.session.add(execution); db.session.flush(); result["sql_execution_id"] = execution.id
+    audit("assistant_sql.execute", "SQLExecution", execution.id, f"rows={execution.row_count} sandbox={execution.sandbox_build_id}")
+    return execution
 
 
 def starter_source(name: str) -> str:

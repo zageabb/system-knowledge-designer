@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import ast
+from collections.abc import Mapping
 from lark import Lark, Transformer, UnexpectedInput, v_args
 
 from .schema import ERColumn, ERModel, ERRelationship, ERTable
 
 GRAMMAR = r'''
 start: "erModel" NAME "{" statement* "}"
-?statement: dialect | direction | subject_area | relationship
+?statement: dialect | direction | include | subject_area | relationship
 dialect: "dialect" STRING ";"
 direction: "direction" DIRECTION ";"
+include: "include" STRING ";"
 subject_area: "subjectArea" NAME "{" area_statement* "}"
 ?area_statement: table | relationship
 table: TABLE_KIND NAME "{" column* "}"
@@ -17,7 +19,9 @@ column: NAME NAME modifier* ";"
 ?modifier: marker | attribute
 marker: MARKER
 attribute: NAME "=" value
-relationship: "relationship" reference "->" reference "{" rel_attribute* "}"
+relationship: "relationship" reference_set "->" reference_set "{" rel_attribute* "}"
+?reference_set: reference -> single_reference
+              | "(" reference ("," reference)* ")" -> composite_reference
 reference: NAME "." NAME
 rel_attribute: NAME value ";"
 ?value: STRING -> string
@@ -50,8 +54,9 @@ class _Transformer(Transformer):
         value = str(token)
         return float(value) if "." in value else int(value)
     def name(self, token): return str(token)
-    def dialect(self, value): return ("dialect", value)
+    def dialect(self, value): return ("dialect", ast.literal_eval(str(value)))
     def direction(self, value): return ("direction", str(value))
+    def include(self, value): return ("include", ast.literal_eval(str(value)))
     def marker(self, value): return ("marker", str(value))
     def attribute(self, key, value): return ("attribute", str(key), value)
     def column(self, data_type, name, *items):
@@ -61,6 +66,8 @@ class _Transformer(Transformer):
     def table(self, kind, name, *columns):
         return ("table", str(kind), str(name), list(columns))
     def reference(self, table, column): return (str(table), str(column))
+    def single_reference(self, reference): return [reference]
+    def composite_reference(self, *references): return list(references)
     def rel_attribute(self, key, value): return (str(key), value)
     def relationship(self, source, target, *attributes):
         attrs = dict(attributes)
@@ -71,6 +78,7 @@ class _Transformer(Transformer):
         for statement in statements:
             if statement[0] == "dialect": model.dialect = statement[1]
             elif statement[0] == "direction": model.direction = statement[1]
+            elif statement[0] == "include": model.includes.append(statement[1])
             elif statement[0] == "relationship": self._add_relationship(model, statement)
             elif statement[0] == "area":
                 area = statement[1]
@@ -81,21 +89,77 @@ class _Transformer(Transformer):
         return model
     @staticmethod
     def _add_relationship(model, item):
-        attrs = item[3]
-        model.relationships.append(ERRelationship(source_table=item[1][0], source_column=item[1][1], target_table=item[2][0], target_column=item[2][1], cardinality=str(attrs.pop("cardinality", "many-to-one")), label=str(attrs.pop("label", "")), attributes=attrs))
+        sources, targets, authored_attrs = item[1], item[2], item[3]
+        if len(sources) != len(targets):
+            raise ERParseError("Composite relationship source and target must contain the same number of fields.")
+        attrs = dict(authored_attrs)
+        cardinality = str(attrs.pop("cardinality", "many-to-one")); label = str(attrs.pop("label", ""))
+        composite_group = "|".join(f"{table}.{column}" for table, column in sources + targets) if len(sources) > 1 else None
+        for position, (source, target) in enumerate(zip(sources, targets), start=1):
+            pair_attrs = dict(attrs)
+            if composite_group:
+                pair_attrs.update({"composite_group": composite_group, "composite_position": position, "composite_size": len(sources)})
+            model.relationships.append(ERRelationship(source_table=source[0], source_column=source[1], target_table=target[0], target_column=target[1], cardinality=cardinality, label=label, attributes=pair_attrs))
 
 
 _PARSER = Lark(GRAMMAR, parser="lalr", propagate_positions=True, transformer=_Transformer())
 
 
-def parse_er_source(source: str) -> ERModel:
+def parse_er_source(source: str, *, includes: Mapping[str, str] | None = None) -> ERModel:
+    model = _parse_unvalidated(source)
+    if model.includes:
+        if includes is None:
+            raise ERParseError("This model uses managed includes, but no project include catalogue was supplied.")
+        model = _resolve_includes(model, includes)
+    _validate(model)
+    return model
+
+
+def _parse_unvalidated(source: str) -> ERModel:
     try:
-        model = _PARSER.parse(_terminate_lines(source))
+        return _PARSER.parse(_terminate_lines(source))
     except UnexpectedInput as exc:
         expected = ", ".join(sorted(getattr(exc, "expected", None) or getattr(exc, "allowed", None) or []))
         raise ERParseError(f"Syntax error; expected {expected or 'valid ER syntax'}.", exc.line, exc.column) from exc
-    _validate(model)
-    return model
+
+
+def _resolve_includes(root: ERModel, catalogue: Mapping[str, str]) -> ERModel:
+    normalized = {_include_key(name): source for name, source in catalogue.items()}
+    resolved_tables, resolved_relationships = [], []
+    expanded_count = 0
+
+    def visit(name: str, chain: tuple[str, ...]) -> None:
+        nonlocal expanded_count
+        key = _include_key(name)
+        if key in chain:
+            cycle = " -> ".join((*chain, key))
+            raise ERParseError(f"Managed include cycle detected: {cycle}.")
+        source = normalized.get(key)
+        if source is None:
+            raise ERParseError(f"Managed include '{name}' does not exist in this project.")
+        if len(chain) >= 8:
+            raise ERParseError("Managed includes exceed the maximum nesting depth of 8.")
+        expanded_count += 1
+        if expanded_count > 20:
+            raise ERParseError("A model may expand at most 20 managed includes.")
+        included = _parse_unvalidated(source)
+        for nested in included.includes:
+            visit(nested, (*chain, key))
+        resolved_tables.extend(included.tables)
+        resolved_relationships.extend(included.relationships)
+
+    for include_name in root.includes:
+        visit(include_name, ())
+    root.tables = resolved_tables + root.tables
+    root.relationships = resolved_relationships + root.relationships
+    return root
+
+
+def _include_key(value: str) -> str:
+    key = " ".join(value.casefold().split())
+    if not key or len(key) > 160:
+        raise ERParseError("Managed include names must contain 1 to 160 characters.")
+    return key
 
 
 def _terminate_lines(source: str) -> str:

@@ -15,6 +15,12 @@ Set the environment values from `.env` in your shell (Flask does not load it wit
 
 Graphviz's `dot` executable is required for SVG/PNG export. On macOS: `brew install graphviz`.
 
+To add the idempotent synthetic procurement demonstration to the local database:
+
+```bash
+python3 -m scripts.seed_demo
+```
+
 ## Demonstration
 
 1. Sign in and create a project.

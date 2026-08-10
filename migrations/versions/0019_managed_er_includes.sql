@@ -1,0 +1,2 @@
+CREATE TABLE er_include (id INTEGER NOT NULL PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES system_project(id), name VARCHAR(160) NOT NULL, normalized_name VARCHAR(160) NOT NULL, source TEXT NOT NULL, created_by VARCHAR(80) NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL, UNIQUE(project_id,normalized_name));
+CREATE INDEX ix_er_include_project_id ON er_include(project_id);

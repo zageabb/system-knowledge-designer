@@ -9,6 +9,7 @@ from database import db
 from models import AuditEvent, DiagramRevision, SystemProject
 from services.er_language import ERParseError, parse_er_source
 from services.revisions import create_revision
+from services.er_includes import include_sources
 from services.settings import CODEX_CONTROL_ENABLED, get_bool
 
 codex_api_bp = Blueprint("codex_api", __name__, url_prefix="/api/codex/v1")
@@ -110,7 +111,7 @@ def create_draft_revision(project_id):
     if project is None: return _error("not_found", "Project was not found.", 404)
     payload = _payload(RevisionCreate)
     if isinstance(payload, tuple): return payload
-    try: model = parse_er_source(payload.source)
+    try: model = parse_er_source(payload.source, includes=include_sources(project.id))
     except ERParseError as exc: return _error("invalid_er_source", str(exc), 422, [{"line": exc.line, "column": exc.column}])
     revision = create_revision(project, payload.source, model, payload.note)
     _audit("revision.create", "DiagramRevision", revision.id, revision.model_hash); db.session.commit()

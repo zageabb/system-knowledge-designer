@@ -34,5 +34,5 @@ erModel Procurement {
 - [Lexical rules and declarations](lexical-and-model.md)
 - [Tables, fields and modifiers](tables-and-fields.md)
 - [Relationships and validation](relationships-and-diagnostics.md)
+- [Managed includes](includes-and-layout-hints.md)
 - [Grammar versioning and planned syntax](versioning.md)
-

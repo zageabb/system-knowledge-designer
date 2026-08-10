@@ -36,6 +36,6 @@ class ERModel(BaseModel):
     name: str
     dialect: str = "sqlite"
     direction: Literal["LR", "TB"] = "LR"
+    includes: list[str] = Field(default_factory=list)
     tables: list[ERTable] = Field(default_factory=list)
     relationships: list[ERRelationship] = Field(default_factory=list)
-

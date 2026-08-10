@@ -7,8 +7,8 @@ import sqlite3
 from pathlib import Path
 
 from models import DiagramRevision, SampleDataset, SandboxBuild, utcnow
-from services.er_language import parse_er_source
 from services.sample_data import validate_row
+from services.revisions import revision_model
 
 
 TYPE_MAP = {"integer": "INTEGER", "int": "INTEGER", "bigint": "INTEGER", "smallint": "INTEGER", "decimal": "REAL", "numeric": "REAL", "real": "REAL", "float": "REAL", "double": "REAL", "boolean": "INTEGER", "bool": "INTEGER", "blob": "BLOB"}
@@ -17,7 +17,7 @@ TYPE_MAP = {"integer": "INTEGER", "int": "INTEGER", "bigint": "INTEGER", "smalli
 def build_sandbox(project, revision: DiagramRevision, dataset: SampleDataset, data_dir: Path) -> SandboxBuild:
     if project.active_revision_id != revision.id or revision.status != "approved":
         raise ValueError("A sandbox can only be built from the active approved revision.")
-    model = parse_er_source(revision.source)
+    model = revision_model(revision)
     table_order = {table.name.casefold(): position for position, table in enumerate(model.tables)}
     canonical_rows = [{"table": row.table_name, "position": row.position, "values": json.loads(row.values_json)} for row in sorted(dataset.rows, key=lambda r: (table_order.get(r.table_name.casefold(), len(table_order)), r.position, r.table_name.casefold()))]
     build_hash = hashlib.sha256((revision.model_hash + json.dumps(canonical_rows, sort_keys=True)).encode()).hexdigest()

@@ -1,0 +1,7 @@
+erModel Shared_Core {
+  subjectArea Shared {
+    table TENANT {
+      integer tenant_id PK
+    }
+  }
+}

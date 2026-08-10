@@ -20,5 +20,8 @@ Keep the application bound to `127.0.0.1` unless authentication, strong secrets 
 
 ## Verify service health
 
-`GET /health` returns a small JSON service status and does not require login. Project and administration pages require an authenticated session.
+`GET /health` is a liveness probe. It returns a small JSON service status when the Flask process can respond and does not require login.
 
+`GET /ready` is the deployment readiness probe. It returns HTTP 200 only when the catalogue database responds, managed storage is writable and Graphviz `dot` is available. A failed dependency returns HTTP 503 with a generic per-check status; internal paths and exception details are not exposed.
+
+Configure process supervisors and container platforms to use `/health` for liveness and `/ready` for readiness. Project and administration pages require an authenticated session.

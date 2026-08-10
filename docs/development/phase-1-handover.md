@@ -24,11 +24,15 @@ Baseline SQL migration is in `migrations/versions/0001_initial.sql`. Runtime `cr
 
 ## Test/launch evidence
 
-`python3 -m pytest -q`: 8 passed, including real Graphviz SVG and 1×/4× PNG output with dimension assertions. Launch: `.venv/bin/flask --app app run --host=127.0.0.1 --port=5015`; URL: <http://127.0.0.1:5015>.
+The current suite contains 97 tests, including real Graphviz SVG and 1×/4× PNG output with dimension assertions, ordered composite relationship validation, managed-include isolation/cycle/immutability checks, and generated 10/50/100-table SVG profiles. On the recorded development host those scale cases completed in 0.17s, 0.19s and 0.21s respectively. Launch: `.venv/bin/flask --app app run --host=127.0.0.1 --port=5015`; URL: <http://127.0.0.1:5015>.
 
 ## Known limitations
 
-Graphviz must exist on the host for the embedded preview and exports. Composite keys/relationships, includes, schema namespaces, Mermaid import, large-model benchmarks and revision diff/restore remain Phase 1/2 work. This is a verified vertical slice, not the full first usable release.
+Graphviz must exist on the host for the embedded preview and exports. Schema namespaces and Mermaid import remain later language work. Managed project-scoped includes with cycle detection, immutable resolution snapshots, composite key participation, ordered composite relationships, large-model profiles and revision diff/restore are delivered.
+
+## Phase status
+
+The Phase 1 acceptance suite covers the embedded preview, composite relationships, managed includes, scale profiles and PNG dimensions. Phase 1 is complete.
 
 ## Suggested commit
 

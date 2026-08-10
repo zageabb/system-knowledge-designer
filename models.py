@@ -241,9 +241,11 @@ class AssistantExchange(TimestampMixin, db.Model):
 
 
 class AssistantContextLink(db.Model):
+    __table_args__ = (db.UniqueConstraint("exchange_id", "parent_exchange_id", name="uq_assistant_context_pair"),)
+
     id = db.Column(db.Integer, primary_key=True)
     project_id = db.Column(db.Integer, db.ForeignKey("system_project.id"), nullable=False, index=True)
-    exchange_id = db.Column(db.Integer, db.ForeignKey("assistant_exchange.id"), nullable=False, unique=True, index=True)
+    exchange_id = db.Column(db.Integer, db.ForeignKey("assistant_exchange.id"), nullable=False, index=True)
     parent_exchange_id = db.Column(db.Integer, db.ForeignKey("assistant_exchange.id"), nullable=False, index=True)
     created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
 
@@ -312,6 +314,16 @@ class ProjectAlias(TimestampMixin, db.Model):
     normalized_alias = db.Column(db.String(160), nullable=False, unique=True, index=True)
     trusted = db.Column(db.Boolean, nullable=False, default=False)
     created_by = db.Column(db.String(80), nullable=False)
+
+
+class ERInclude(TimestampMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey("system_project.id"), nullable=False, index=True)
+    name = db.Column(db.String(160), nullable=False)
+    normalized_name = db.Column(db.String(160), nullable=False)
+    source = db.Column(db.Text, nullable=False)
+    created_by = db.Column(db.String(80), nullable=False)
+    __table_args__ = (db.UniqueConstraint("project_id", "normalized_name"),)
 
 
 class ProjectIntegrityScan(db.Model):

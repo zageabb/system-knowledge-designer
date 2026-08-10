@@ -18,7 +18,7 @@ Each exchange is stored in project-scoped history with the model name, requestin
 - The structured response must use only supplied evidence identifiers.
 - Answers with retrieved evidence must contain citations; invented citation identifiers are rejected.
 - Empty retrieval requires an explicit insufficiency limitation.
-- Assistant answers do not invoke tools automatically. The page separately exposes three user-invoked, typed read tools and no SQL execution.
+- Assistant answers invoke no tools unless the user enables the corresponding option. Manual and model-selected tools remain typed, bounded and audited.
 
 ## Typed read tools
 
@@ -27,28 +27,38 @@ The Assistant page exposes an explicit read-tool form:
 - `schema.inspect` accepts one table name and returns its typed definition and direct relationships.
 - `documents.read_chunk` accepts one integer chunk ID and returns that citation only when it belongs to the current project.
 - `sql.validate` accepts one SQL statement, applies the deterministic read-only validator and returns referenced objects with `executable: false`.
+- `sql.query` executes one validated read-only statement against the current managed sandbox.
+- `samples.aggregate` builds and runs a typed aggregate against the current managed sandbox.
 
-Every invocation is persisted and audited as completed or rejected. Unknown tools—including shell or arbitrary function names—are rejected. Tool arguments cannot select filesystem paths, execute SQL, mutate data or bypass project scoping.
+Every invocation is persisted and audited as completed or rejected. Unknown tools—including shell or arbitrary function names—are rejected. Tool arguments cannot select filesystem paths, mutate data or bypass project scoping; SQL execution is available only through the validated managed-sandbox tools.
 
 ### Opt-in model-selected tools
 
 Select **Allow Ollama to select up to three read-only tools** when asking a question if retrieval alone may be insufficient. Ollama returns a structured tool plan, but the application enforces the same fixed allow-list and executes each request itself. Successful results become additional evidence with `tool:{id}` citations before the final answer is generated. Rejected calls remain visible in Tool activity and are not supplied as factual evidence.
 
-This option is off by default for each question. Enabling it does not broaden the read-tool catalogue: shell, filesystem, network and SQL execution remain unavailable regardless of what the model requests.
+This option is off by default for each question. Enabling it does not broaden the planner catalogue: shell, filesystem, network and SQL execution remain unavailable to the general tool planner. SQL answering has its own explicit option and deterministic execution path.
 
-## Reviewable document-link actions
+## Reviewable evidence-link actions
 
-Select **Allow Ollama to suggest reviewable document links** to let the assistant propose links between an existing project document and an exact table or field in the active model. The option is off by default and permits no other mutation type.
+Select **Allow Ollama to suggest reviewable document links** to let the assistant propose links between either an existing whole project document or one precise stored document chunk and an exact table or field in the active model. The option is off by default and permits no other mutation types.
 
-Each suggestion is persisted as a proposed `AIAction`; it does not create a link. Review its document, target and reason, then select **Confirm link** or **Reject**. Confirmation rechecks project ownership, the active model revision, the exact target and duplicate links before applying the deterministic link operation. Model drift or an invalid/duplicate target prevents application. Both proposal and decision are audited.
+Each suggestion is persisted as a proposed `AIAction`; it does not create a link. Review its document or chunk, target and reason, then select **Confirm link** or **Reject**. Confirmation rechecks project ownership, the active model revision, the exact target and duplicate links before applying the deterministic link operation. Model drift or an invalid/duplicate target prevents application. Both proposal and decision are audited.
 
 ## Explicit follow-up context
 
-Use **Optional follow-up context** to select one earlier exchange from the current project. No conversation history is included automatically. The selected question, bounded answer and its citation labels are added as one untrusted evidence item, and the new exchange records a persistent link to its parent. Follow-up citations link back to that exchange.
+Use **Optional follow-up context** to select up to three earlier exchanges from the current project. No conversation history is included automatically. Each selected question, bounded answer and its citation labels are added as an untrusted evidence item, and the new exchange records a persistent link to every selected parent. Follow-up citations link back to those exchanges.
 
-Only one parent exchange can be selected, and cross-project exchange IDs are rejected. Prior assistant wording is context rather than authoritative schema: important claims still require review against the original evidence.
+More than three parents and cross-project exchange IDs are rejected. Prior assistant wording is context rather than authoritative schema: important claims still require review against the original evidence.
 
-Answers may still be incomplete or poorly phrased. Verify important claims against the displayed evidence and citations. Additional mutation types and multi-exchange context strategies remain later work.
+Answers may still be incomplete or poorly phrased. Verify important claims against the displayed evidence and citations.
+
+## Quantitative and SQL questions
+
+Build a successful sample sandbox from the active approved revision, then select **Allow Ollama to build and run one validated read-only sandbox query** when asking questions such as “How many purchase orders are there?”, “What is the total open order value?” or “Which suppliers have unpaid invoices?”.
+
+Ollama builds one proposal from the approved schema. The application independently validates it, selects the current project sandbox, executes it with a five-second timeout and 100-row evidence limit, persists the execution, and supplies the exact result to the answer as a required citation. The model never receives or selects a database path. Mutations, administrative statements, multiple statements and unknown objects are rejected before execution.
+
+The manual tool form also exposes `samples.aggregate` for typed count, sum, average, minimum and maximum operations. Its argument is JSON, for example `{"operation":"count","table":"PURCHASE_ORDER","column":"*"}`. An optional `group_by` field produces grouped aggregates.
 
 ## SQL impact diagrams
 

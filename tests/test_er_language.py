@@ -65,3 +65,80 @@ def test_graph_renderer_highlights_referenced_table_and_field():
     dot = model_to_dot(parse_er_source(SOURCE), {"SUPPLIER", "SUPPLIER.name"})
     assert 'BGCOLOR="#fef3c7"' in dot
     assert dot.count('BGCOLOR="#fde68a"') == 3
+
+
+def test_composite_key_relationship_expands_ordered_field_pairs():
+    source = '''erModel Composite {
+ subjectArea Core {
+  table PARENT {
+   integer tenant_id PK
+   integer parent_id PK
+  }
+  table CHILD {
+   integer tenant_id PK FK
+   integer parent_id PK FK
+  }
+  relationship (CHILD.tenant_id, CHILD.parent_id) -> (PARENT.tenant_id, PARENT.parent_id) {
+   cardinality many-to-one
+   label "composite parent"
+  }
+ }
+}'''
+    model = parse_er_source(source)
+    assert [relationship.source_column for relationship in model.relationships] == ["tenant_id", "parent_id"]
+    assert [relationship.target_column for relationship in model.relationships] == ["tenant_id", "parent_id"]
+    assert {relationship.attributes["composite_size"] for relationship in model.relationships} == {2}
+    assert [relationship.attributes["composite_position"] for relationship in model.relationships] == [1, 2]
+    dot = model_to_dot(model)
+    assert "CHILD:tenant_id_e:e -> PARENT:tenant_id_w:w" in dot
+    assert "CHILD:parent_id_e:e -> PARENT:parent_id_w:w" in dot
+
+
+def test_composite_relationship_rejects_different_pair_counts():
+    bad = SOURCE.replace("PO.supplier_id -> SUPPLIER.supplier_id", "(PO.po_id, PO.supplier_id) -> (SUPPLIER.supplier_id)")
+    with pytest.raises(ERParseError, match="same number of fields"):
+        parse_er_source(bad)
+
+
+def test_managed_includes_merge_nested_models_without_filesystem_paths():
+    shared = '''erModel Shared {
+ subjectArea Shared {
+  table TENANT {
+   integer tenant_id PK
+  }
+ }
+}'''
+    purchasing = '''erModel Purchasing {
+ include "shared core"
+ subjectArea Buying {
+  table PO {
+   integer po_id PK
+   integer tenant_id FK
+  }
+  relationship PO.tenant_id -> TENANT.tenant_id {
+   label "owned by"
+  }
+ }
+}'''
+    root = '''erModel Root {
+ include "purchasing"
+ subjectArea Local {
+  table REPORT {
+   integer report_id PK
+  }
+ }
+}'''
+    model = parse_er_source(root, includes={"shared core": shared, "purchasing": purchasing})
+    assert [table.name for table in model.tables] == ["TENANT", "PO", "REPORT"]
+    assert model.relationships[0].target_table == "TENANT"
+    assert model.includes == ["purchasing"]
+
+
+def test_managed_includes_reject_missing_names_and_cycles():
+    root = 'erModel Root {\n include "missing"\n}'
+    with pytest.raises(ERParseError, match="does not exist"):
+        parse_er_source(root, includes={})
+    first = 'erModel First {\n include "second"\n}'
+    second = 'erModel Second {\n include "first"\n}'
+    with pytest.raises(ERParseError, match="cycle detected: second -> first -> second"):
+        parse_er_source(first, includes={"first": first, "second": second})

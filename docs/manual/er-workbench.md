@@ -19,6 +19,12 @@ Saving always creates a new draft. If another revision was created after the edi
 
 Application notices appear as floating toast notifications in the upper-right corner and do not move the workbench. Select the close button to dismiss one immediately; otherwise it closes automatically after a short interval.
 
+## Managed includes
+
+Use **Managed ER includes** below the editor to store a reusable, self-contained ER model inside the current project. Reference it at the top level with `include "include name"`. Includes resolve only by project catalogue name; filesystem paths are never accepted.
+
+Resolution is bounded and rejects missing names and circular chains. A saved revision contains an immutable resolved model snapshot. Deleting an include may prevent new validation of source that still references it, but does not alter existing revisions.
+
 ## Navigate the preview
 
 Use minus, plus and fit controls to change scale. The preview has horizontal and vertical scrollbars for diagrams larger than its pane. Relationship lines attach to the outside boundary of their exact source and target field rows.

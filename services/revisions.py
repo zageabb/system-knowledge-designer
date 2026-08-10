@@ -32,3 +32,8 @@ def unified_source_diff(older: DiagramRevision, newer: DiagramRevision) -> str:
         fromfile=f"revision-{older.revision_number}.erd",
         tofile=f"revision-{newer.revision_number}.erd",
     ))
+
+
+def revision_model(revision: DiagramRevision) -> ERModel:
+    """Load the immutable resolved model snapshot; never re-resolve authored includes."""
+    return ERModel.model_validate_json(revision.model_json)

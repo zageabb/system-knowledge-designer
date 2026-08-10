@@ -21,7 +21,7 @@ System Knowledge Designer is a local-first workspace for modelling systems as st
 
 ## Planned chapters
 
-Additional document formats, selected cross-project attachments, alias-aware federation, deployment hardening and the complete procurement demonstration remain planned.
+Background render/export execution, broader accessibility verification and production deployment packaging remain planned.
 
 ## Core authority rule
 
