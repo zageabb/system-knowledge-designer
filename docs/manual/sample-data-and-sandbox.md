@@ -21,6 +21,8 @@ Unknown fields, missing non-null values and incompatible types are rejected rath
 
 Select **Edit** beside a stored row to open a dedicated grid for that model table. Each field has its own input, with data type and required status shown in the column heading. **Save row** validates the fields and the complete dataset's relationships before persistence. Rows are saved individually and their table cannot be changed in place.
 
+Use the blank **New** row at the bottom of the same grid to enter another record, then select **Add row**. The application validates and normalises the values and assigns the next position for that table before returning to the grid.
+
 Select **Delete row** from the same grid and confirm the browser prompt to remove a row. A deletion is refused if another sample row still references it. Edit or remove dependent rows first, then delete the referenced row. Successful edits and deletions are recorded in the audit log.
 
 ## Delete a dataset

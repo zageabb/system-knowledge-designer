@@ -324,16 +324,25 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         if dataset.project_id != project.id: return ("Dataset does not belong to project", 400)
         if not project.active_revision_id: flash("Approve a model revision before adding sample rows.", "danger"); return redirect(url_for("sample_data", project_id=project.id))
         revision = db.session.get(DiagramRevision, project.active_revision_id); model = revision_model(revision)
+        table_editor = "values_json" not in request.form
+        table_name = request.form.get("table_name", "")
         try:
-            raw = json.loads(request.form.get("values_json", "{}"))
+            if table_editor:
+                raw = {key.removeprefix("field:"): (value if value != "" else None) for key, value in request.form.items() if key.startswith("field:")}
+            else:
+                raw = json.loads(request.form.get("values_json", "{}"))
             if not isinstance(raw, dict): raise SampleValidationError("Row values must be a JSON object.")
-            values = validate_row(model, request.form.get("table_name", ""), raw)
+            values = validate_row(model, table_name, raw)
         except (json.JSONDecodeError, SampleValidationError) as exc:
-            flash(f"Sample row rejected: {exc}", "danger"); return redirect(url_for("sample_data", project_id=project.id))
-        position = (db.session.query(db.func.max(SampleRowDefinition.position)).filter_by(dataset_id=dataset.id, table_name=request.form.get("table_name", "")).scalar() or 0) + 1
-        row = SampleRowDefinition(dataset_id=dataset.id, table_name=request.form.get("table_name", ""), position=position, values_json=json.dumps(values, sort_keys=True))
+            flash(f"Sample row rejected: {exc}", "danger")
+            if table_editor: return redirect(url_for("edit_sample_table", project_id=project.id, dataset_id=dataset.id, table_name=table_name))
+            return redirect(url_for("sample_data", project_id=project.id))
+        position = (db.session.query(db.func.max(SampleRowDefinition.position)).filter_by(dataset_id=dataset.id, table_name=table_name).scalar() or 0) + 1
+        row = SampleRowDefinition(dataset_id=dataset.id, table_name=table_name, position=position, values_json=json.dumps(values, sort_keys=True))
         db.session.add(row); db.session.flush(); audit("sample_row.create", "SampleRowDefinition", row.id, row.table_name); db.session.commit()
-        flash(f"Sample row added to {row.table_name}.", "success"); return redirect(url_for("sample_data", project_id=project.id))
+        flash(f"Sample row added to {row.table_name}.", "success")
+        if table_editor: return redirect(url_for("edit_sample_table", project_id=project.id, dataset_id=dataset.id, table_name=row.table_name))
+        return redirect(url_for("sample_data", project_id=project.id))
 
     @app.get("/projects/<int:project_id>/datasets/<int:dataset_id>/tables/<path:table_name>/edit")
     @login_required

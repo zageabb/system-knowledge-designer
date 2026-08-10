@@ -150,6 +150,20 @@ def test_edit_button_opens_table_grid_and_saves_typed_fields(tmp_path):
     with app.app_context(): assert json.loads(db.session.get(SampleRowDefinition, row_id).values_json)["order_value"] == 325.5
 
 
+def test_table_grid_can_add_another_typed_row(tmp_path):
+    app = make_app(tmp_path); client = app.test_client(); client.post("/login", data={"username": "admin", "password": "test-password"})
+    project_id, revision_id, dataset_id = prepare(app)
+    grid_path = f"/projects/{project_id}/datasets/{dataset_id}/tables/SUPPLIER/edit"
+    grid = client.get(grid_path)
+    assert grid.status_code == 200 and b"New" in grid.data and b"Add row" in grid.data
+    added = client.post(f"/projects/{project_id}/datasets/{dataset_id}/rows", data={"table_name": "SUPPLIER", "field:supplier_id": "2", "field:supplier_name": "Example Components"}, follow_redirects=True)
+    assert added.status_code == 200 and b"Sample row added to SUPPLIER" in added.data and b'value="Example Components"' in added.data
+    with app.app_context():
+        rows = SampleRowDefinition.query.filter_by(dataset_id=dataset_id, table_name="SUPPLIER").order_by(SampleRowDefinition.position).all()
+        assert [row.position for row in rows] == [1, 2]
+        assert json.loads(rows[1].values_json) == {"supplier_id": 2, "supplier_name": "Example Components"}
+
+
 def test_table_grid_is_project_and_active_model_scoped(tmp_path):
     app = make_app(tmp_path); client = app.test_client(); client.post("/login", data={"username": "admin", "password": "test-password"})
     project_id, revision_id, dataset_id = prepare(app)
