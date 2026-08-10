@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% block title %}{{document.title}} · {{project.name}}{% endblock %}
+{% block content %}
+<div class="page-head"><div><a href="{{url_for('knowledge',project_id=project.id)}}">← Knowledge</a><p class="eyebrow">MANAGED DOCUMENT VIEWER</p><h1>{{document.title}}</h1><p>{{document.original_filename}} · {{document.media_type}} · {{document.classification}} · {{document.provenance}}</p></div><span class="status">{{document.status}}</span></div>
+{% if versions|length > 1 %}<section class="card" style="margin-bottom:18px"><h2>Versions</h2><nav aria-label="Document versions">{% for version_document in versions %}<a class="button{% if version_document.id == document.id %} primary{% endif %}" href="{{url_for('knowledge_document',project_id=project.id,document_id=version_document.id)}}">v{{version_document.version.version_number}}</a> {% endfor %}</nav></section>{% endif %}
+<section class="card"><h2>Indexed content</h2>{% for chunk in chunks %}<article id="chunk-{{chunk.id}}" style="padding:16px 0;border-top:1px solid var(--line)"><h3>{{chunk.locator}}</h3><div style="white-space:pre-wrap">{{chunk.text}}</div><p><a href="{{url_for('knowledge_chunk',project_id=project.id,chunk_id=chunk.id)}}">Open citation and model links</a></p></article>{% else %}<p>No extracted content is available for this document.</p>{% endfor %}</section>
+{% endblock %}

@@ -483,6 +483,18 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         evidence_records = EvidenceRecord.query.filter_by(project_id=project.id).order_by(EvidenceRecord.id.desc()).limit(20).all()
         return render_template("knowledge.html", project=project, documents=documents, query=query, source=source, document_results=document_results, schema_results=schema_results, relationship_results=relationship_results, sample_results=sample_results, cross_project_results=cross_project_results, link_targets=link_targets, coverage=coverage, evidence_records=evidence_records)
 
+    @app.get("/projects/<int:project_id>/knowledge/documents/<int:document_id>")
+    @login_required
+    def knowledge_document(project_id, document_id):
+        project = db.get_or_404(SystemProject, project_id); document = db.get_or_404(KnowledgeDocument, document_id)
+        if document.project_id != project.id: return ("Document does not belong to project", 400)
+        versions = []
+        if document.version:
+            lineage = DocumentVersion.query.filter_by(family_id=document.version.family_id).order_by(DocumentVersion.version_number.desc()).all()
+            versions = [db.session.get(KnowledgeDocument, item.document_id) for item in lineage]
+        chunks = sorted(document.chunks, key=lambda item: item.position)
+        return render_template("knowledge_document.html", project=project, document=document, chunks=chunks, versions=versions)
+
     @app.get("/projects/<int:project_id>/knowledge/chunks/<int:chunk_id>")
     @login_required
     def knowledge_chunk(project_id, chunk_id):

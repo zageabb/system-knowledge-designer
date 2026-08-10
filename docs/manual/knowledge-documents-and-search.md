@@ -26,13 +26,19 @@ Select **Upload new version** beside an existing document and choose the replace
 
 Prior versions, their chunks and their citations remain searchable and openable. The document table labels each record with its version number. This preserves historical evidence instead of silently replacing extracted text.
 
+## View a document
+
+Select a document title in the Knowledge table to open the managed document viewer. The viewer displays document metadata and the indexed text in source order, preserving page, heading, row, worksheet, message or archive-member locators. Each section links to its precise citation and model-link page. When the document belongs to a version family, the viewer provides links to the other retained versions.
+
+The viewer renders stored extracted text rather than executing or embedding the uploaded source file. Document and version access remains scoped to the owning project.
+
 ## Link documents to the model
 
 With an approved active revision, select **Link to model** beside a document and choose an authoritative table or column. The application validates the selected target against the active parsed model and stores the revision that defined it. Duplicate and unknown targets are rejected.
 
 Links appear in the document list and on every citation page for that document. Select **×** beside a link to remove it. Creating and removing links is audited. A link remains revision-bound when a later model is approved, preserving what the document was linked to at the time; future coverage tooling will flag links whose targets no longer exist in the active revision.
 
-Only direct user actions create links in this slice. Future AI suggestions must remain proposals until explicitly confirmed.
+Assistant-suggested document and passage links remain proposals until explicitly confirmed.
 
 ### Link a specific passage
 

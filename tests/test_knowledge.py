@@ -41,6 +41,28 @@ def test_upload_extract_index_search_and_citation(tmp_path):
     assert citation.status_code == 200 and b"Invoices above 5000" in citation.data
 
 
+def test_document_title_links_to_project_scoped_viewer(tmp_path):
+    app = make_app(tmp_path); project_id = prepare(app); client = app.test_client(); client.post("/login", data={"username": "admin", "password": "test-password"})
+    response = client.post(f"/projects/{project_id}/knowledge", data={"document": (BytesIO(b"First section\n\nSecond section"), "viewer.txt"), "title": "Viewer document"}, content_type="multipart/form-data", follow_redirects=True)
+    with app.app_context(): document_id = KnowledgeDocument.query.one().id
+    viewer_path = f"/projects/{project_id}/knowledge/documents/{document_id}"
+    assert response.status_code == 200 and f'href="{viewer_path}"'.encode() in response.data
+    viewer = client.get(viewer_path)
+    assert viewer.status_code == 200 and b"MANAGED DOCUMENT VIEWER" in viewer.data and b"First section" in viewer.data
+    assert b"Open citation and model links" in viewer.data
+
+
+def test_document_viewer_rejects_cross_project_document(tmp_path):
+    app = make_app(tmp_path); first_id = prepare(app)
+    with app.app_context():
+        second = SystemProject(name="Finance", slug="finance", dialect="sqlite"); db.session.add(second); db.session.commit(); second_id = second.id
+    client = app.test_client(); client.post("/login", data={"username": "admin", "password": "test-password"})
+    client.post(f"/projects/{first_id}/knowledge", data={"document": (BytesIO(b"Private viewer content"), "private.txt")}, content_type="multipart/form-data")
+    with app.app_context(): document_id = KnowledgeDocument.query.one().id
+    rejected = client.get(f"/projects/{second_id}/knowledge/documents/{document_id}")
+    assert rejected.status_code == 400 and b"does not belong to project" in rejected.data
+
+
 def test_unsupported_upload_is_rejected_without_record(tmp_path):
     app = make_app(tmp_path); project_id = prepare(app); client = app.test_client(); client.post("/login", data={"username": "admin", "password": "test-password"})
     response = client.post(f"/projects/{project_id}/knowledge", data={"document": (BytesIO(b"binary"), "unsafe.exe")}, content_type="multipart/form-data", follow_redirects=True)
