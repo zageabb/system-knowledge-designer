@@ -10,6 +10,8 @@ The latest catalogue revision is editable. Users can add and rename tables, add 
 
 Field data types use a controlled dropdown containing common ER types while retaining any existing custom type. Relationship table references are selected from the revision catalogue, and each relationship field dropdown is dynamically limited to fields belonging to its selected table; the server still validates every submitted reference.
 
+Tabulator 6.5.0 is vendored under its MIT licence and progressively enhances every server-rendered data table across the application. Grids gain sortable and movable columns, text filters for high-cardinality columns, dropdown filters for bounded value sets, responsive collapse and local pagination above twenty rows. Existing form controls, links and no-JavaScript HTML tables remain the behavioural source, while the external-research activity grid exposes a safe live-update bridge for polling.
+
 The documentation workstream now has a real user manual and normative ER syntax reference. Every fenced `.erd` example is executed through the current parser during tests, and local Markdown links are checked.
 
 ## Files and architecture

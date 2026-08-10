@@ -22,6 +22,19 @@ def test_base_layout_loads_scrollable_workbench_styles(tmp_path):
     assert b"overflow-x: scroll" in css.data and b"width: max-content" in css.data
 
 
+def test_base_layout_loads_local_tabulator_for_all_tables(tmp_path):
+    app = make_app(tmp_path); client = app.test_client(); login(client)
+    page = client.get("/")
+    assert b"vendor/tabulator/tabulator.min.css" in page.data
+    assert b"vendor/tabulator/tabulator.min.js" in page.data
+    assert b"js/tabulator-app.js" in page.data
+    adapter = client.get("/static/js/tabulator-app.js")
+    assert adapter.status_code == 200
+    assert b'querySelectorAll("table")' in adapter.data
+    assert b'headerFilter = "list"' in adapter.data
+    assert b'headerFilter = "input"' in adapter.data
+
+
 def test_base_layout_has_keyboard_landmarks_and_visible_focus(tmp_path):
     app = make_app(tmp_path); client = app.test_client(); login(client)
     page = client.get("/")
