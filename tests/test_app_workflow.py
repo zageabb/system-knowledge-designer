@@ -131,8 +131,41 @@ def test_catalogue_always_presents_foreign_keys_as_one_to_many(tmp_path):
     catalogue = client.get(f"/projects/{project_id}/catalogue")
 
     assert catalogue.status_code == 200
-    assert b"<th>One</th><th>Many</th><th>Cardinality</th>" in catalogue.data
-    assert b"PARENT.parent_id" in catalogue.data
-    assert catalogue.data.index(b"PARENT.parent_id") < catalogue.data.index(b"CHILD.parent_id")
+    assert b"One table" in catalogue.data and b"Many table" in catalogue.data
+    assert b'name="one_table" value="PARENT"' in catalogue.data
+    assert b'name="many_table" value="CHILD"' in catalogue.data
+    assert catalogue.data.index(b'name="one_table" value="PARENT"') < catalogue.data.index(b'name="many_table" value="CHILD"')
     assert b"one-to-many" in catalogue.data
     assert b">many-to-one<" not in catalogue.data
+
+
+def test_catalogue_edits_create_revision_and_regenerate_er_source(tmp_path):
+    app = make_app(tmp_path); client = app.test_client(); login(client)
+    created = client.post("/projects", data={"name": "Editable Catalogue", "dialect": "sqlite"})
+    project_id = int(created.location.split("/")[2])
+    initial = '''erModel Editable_Catalogue {
+ dialect "sqlite"
+ direction LR
+ subjectArea Core {
+  table PARENT {
+   integer parent_id PK
+  }
+ }
+}'''
+    client.post(created.location, data={"source": initial, "action": "save", "base_revision_number": "0"})
+
+    added_table = client.post(f"/projects/{project_id}/catalogue", data={"action": "add_table", "base_revision_number": "1", "name": "CHILD", "subject_area": "Core", "kind": "table"})
+    assert added_table.status_code == 302 and "revision_id=" in added_table.location
+    added_field = client.post(f"/projects/{project_id}/catalogue", data={"action": "add_column", "base_revision_number": "2", "table": "CHILD", "name": "parent_id", "data_type": "integer", "foreign_key": "1"})
+    assert added_field.status_code == 302
+    added_relationship = client.post(f"/projects/{project_id}/catalogue", data={"action": "add_relationship", "base_revision_number": "3", "one_table": "PARENT", "one_column": "parent_id", "many_table": "CHILD", "many_column": "parent_id", "label": "has children"})
+    assert added_relationship.status_code == 302
+
+    workbench = client.get(f"/projects/{project_id}/workbench")
+    assert b"table CHILD" in workbench.data
+    assert b"relationship CHILD.parent_id -&gt; PARENT.parent_id" in workbench.data
+    assert b"has children" in workbench.data
+    with app.app_context():
+        revisions = DiagramRevision.query.filter_by(project_id=project_id).order_by(DiagramRevision.revision_number).all()
+        assert len(revisions) == 4
+        assert "table CHILD" in revisions[-1].source

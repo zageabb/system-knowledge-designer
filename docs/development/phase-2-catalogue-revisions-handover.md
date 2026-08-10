@@ -6,6 +6,8 @@ Implemented a structured catalogue view for any project revision, conflict-safe 
 
 Catalogue relationship rows use a consistent one-to-many reading order: the referenced parent field is shown under **One**, followed by the foreign-key dependant under **Many**. This is a presentation rule only; authoritative source and stored foreign-key direction remain unchanged.
 
+The latest catalogue revision is editable. Users can add and rename tables, add and edit fields and their markers, and add or edit one-to-many relationships. Every catalogue save validates the complete structured model, creates an immutable draft revision, and deterministically regenerates canonical ER source; saving ER source in the workbench continues to rematerialise the catalogue in the opposite direction. Historical catalogues remain read-only.
+
 The documentation workstream now has a real user manual and normative ER syntax reference. Every fenced `.erd` example is executed through the current parser during tests, and local Markdown links are checked.
 
 ## Files and architecture

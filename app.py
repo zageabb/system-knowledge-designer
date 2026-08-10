@@ -34,6 +34,7 @@ from services.external_research import ExternalResearchError, sanitise_external_
 from services.project_graph import ProjectGraphError, RELATIONSHIP_TYPES, normalize_alias, projects_are_linked, scan_project_integrity, traverse_projects, validate_project_link
 from services.er_includes import include_sources, normalize_include_name
 from services.readiness import readiness_report
+from services.catalogue_editor import CatalogueEditError, edit_catalogue
 
 login_manager = LoginManager()
 csrf = CSRFProtect()
@@ -224,19 +225,33 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         records = DiagramRevision.query.filter_by(project_id=project.id).order_by(DiagramRevision.revision_number.desc()).all()
         return render_template("revisions.html", project=project, revisions=records)
 
-    @app.get("/projects/<int:project_id>/catalogue")
+    @app.route("/projects/<int:project_id>/catalogue", methods=["GET", "POST"])
     @login_required
     def catalogue(project_id):
         project = db.get_or_404(SystemProject, project_id)
-        revision_id = request.args.get("revision_id", type=int) or project.active_revision_id
-        if revision_id is None:
-            latest = DiagramRevision.query.filter_by(project_id=project.id).order_by(DiagramRevision.revision_number.desc()).first()
-            revision_id = latest.id if latest else None
+        latest = DiagramRevision.query.filter_by(project_id=project.id).order_by(DiagramRevision.revision_number.desc()).first()
+        revision_id = request.args.get("revision_id", type=int) or (latest.id if latest else None)
         revision = db.session.get(DiagramRevision, revision_id) if revision_id else None
         if revision and revision.project_id != project.id: return ("Revision does not belong to project", 400)
+        if request.method == "POST":
+            if latest is None: flash("Create the first ER revision before editing the catalogue.", "danger"); return redirect(url_for("workbench", project_id=project.id))
+            expected = request.form.get("base_revision_number", type=int)
+            if expected != latest.revision_number:
+                flash(f"This project changed after the catalogue was opened (expected r{expected}, now r{latest.revision_number}). Reload and reapply your changes.", "danger")
+                return redirect(url_for("catalogue", project_id=project.id)), 409
+            try:
+                model, source = edit_catalogue(revision_model(latest), request.form.get("action", ""), request.form)
+                created = create_revision(project, source, model, request.form.get("revision_note", "Catalogue edit"))
+                audit("catalogue.edit", "DiagramRevision", created.id, f"action={request.form.get('action', '')}")
+                db.session.commit(); flash(f"Catalogue updated in draft revision {created.revision_number}; ER source and diagram regenerated.", "success")
+                return redirect(url_for("catalogue", project_id=project.id, revision_id=created.id))
+            except CatalogueEditError as exc:
+                db.session.rollback(); flash(str(exc), "danger")
+                return redirect(url_for("catalogue", project_id=project.id, revision_id=latest.id))
         tables = TableDefinition.query.filter_by(project_id=project.id, revision_id=revision_id).order_by(TableDefinition.subject_area, TableDefinition.name).all() if revision_id else []
         relationships = RelationshipDefinition.query.filter_by(project_id=project.id, revision_id=revision_id).order_by(RelationshipDefinition.source_table).all() if revision_id else []
-        return render_template("catalogue.html", project=project, revision=revision, tables=tables, relationships=relationships)
+        editable = bool(revision and latest and revision.id == latest.id)
+        return render_template("catalogue.html", project=project, revision=revision, tables=tables, relationships=relationships, editable=editable)
 
     @app.get("/projects/<int:project_id>/revisions/<int:revision_id>/source.erd")
     @login_required
