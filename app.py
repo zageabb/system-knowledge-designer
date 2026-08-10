@@ -438,6 +438,31 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         proposals = AIAction.query.filter_by(project_id=project.id, action_type="propose_sql").order_by(AIAction.id.desc()).limit(10).all()
         return render_template("sql_workbench.html", project=project, build=build, statement=statement, validation=validation, result=result, error=error, history=history, proposals=proposals, query_preview_svg=query_preview_svg)
 
+    @app.route("/projects/<int:project_id>/sql-viewer", methods=["GET", "POST"])
+    @login_required
+    def sql_viewer(project_id):
+        project = db.get_or_404(SystemProject, project_id)
+        build = None
+        if project.active_revision_id:
+            build = SandboxBuild.query.filter_by(project_id=project.id, revision_id=project.active_revision_id, status="completed").order_by(SandboxBuild.id.desc()).first()
+        statement = request.form.get("statement", "") if request.method == "POST" else ""
+        validation = None; result = None; error = None
+        if request.method == "POST":
+            if not build:
+                error = "Build a successful sandbox for the active model before testing SQL."
+            elif not statement.strip():
+                error = "Drop or enter a SQL statement before testing it."
+            else:
+                model = revision_model(db.session.get(DiagramRevision, build.revision_id))
+                try:
+                    validation = validate_readonly_sql(statement, model)
+                    result = execute_readonly(validation, Path(build.managed_path), row_limit=500, timeout_seconds=10, allowed_root=app.config["DATA_DIR"])
+                    execution = SQLExecution(project_id=project.id, sandbox_build_id=build.id, statement=validation.statement, referenced_objects_json=json.dumps({"tables": validation.tables, "columns": validation.columns}), status="completed", row_count=len(result.rows), runtime_ms=result.runtime_ms)
+                    db.session.add(execution); db.session.flush(); audit("sql_viewer.execute", "SQLExecution", execution.id, f"rows={execution.row_count}"); db.session.commit()
+                except (SQLValidationError, sqlite3.Error) as exc:
+                    error = str(exc)
+        return render_template("sql_viewer.html", project=project, build=build, statement=statement, validation=validation, result=result, error=error)
+
     @app.post("/projects/<int:project_id>/sql/proposals")
     @login_required
     def propose_sql(project_id):

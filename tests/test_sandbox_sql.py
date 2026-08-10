@@ -87,6 +87,34 @@ def test_complete_browser_sample_to_sql_workflow(tmp_path):
     assert query.status_code == 200 and b"Acme" in query.data and b"Validation passed" in query.data
 
 
+def test_sql_viewer_drop_page_executes_validated_query(tmp_path):
+    app = make_app(tmp_path); client = app.test_client(); client.post("/login", data={"username": "admin", "password": "test-password"})
+    project_id, revision_id, dataset_id = prepare(app)
+    with app.app_context():
+        project = db.session.get(SystemProject, project_id); revision = db.session.get(DiagramRevision, revision_id); dataset = db.session.get(SampleDataset, dataset_id)
+        db.session.add(build_sandbox(project, revision, dataset, app.config["DATA_DIR"])); db.session.commit()
+    page = client.get(f"/projects/{project_id}/sql-viewer")
+    assert page.status_code == 200 and b"Drop SQL here" in page.data and b"dataTransfer" in page.data and b".sql" in page.data
+    tested = client.post(f"/projects/{project_id}/sql-viewer", data={"statement": "SELECT supplier_name FROM SUPPLIER"}, follow_redirects=True)
+    assert tested.status_code == 200 and b"Test results" in tested.data and b"Acme" in tested.data
+    with app.app_context():
+        execution = SQLExecution.query.one()
+        assert execution.statement == "SELECT supplier_name FROM SUPPLIER" and execution.row_count == 1
+
+
+def test_sql_viewer_rejects_mutation_and_requires_current_sandbox(tmp_path):
+    app = make_app(tmp_path); client = app.test_client(); client.post("/login", data={"username": "admin", "password": "test-password"})
+    project_id, revision_id, dataset_id = prepare(app)
+    no_build = client.post(f"/projects/{project_id}/sql-viewer", data={"statement": "SELECT * FROM SUPPLIER"})
+    assert b"Build a successful sandbox" in no_build.data
+    with app.app_context():
+        project = db.session.get(SystemProject, project_id); revision = db.session.get(DiagramRevision, revision_id); dataset = db.session.get(SampleDataset, dataset_id)
+        db.session.add(build_sandbox(project, revision, dataset, app.config["DATA_DIR"])); db.session.commit()
+    rejected = client.post(f"/projects/{project_id}/sql-viewer", data={"statement": "DELETE FROM SUPPLIER"})
+    assert rejected.status_code == 200 and b"SQL rejected" in rejected.data
+    with app.app_context(): assert SQLExecution.query.count() == 0
+
+
 def test_executor_rejects_paths_outside_managed_root(tmp_path):
     validated = validate_readonly_sql("SELECT * FROM SUPPLIER", parse_er_source(SOURCE))
     with pytest.raises(SQLValidationError, match="outside the managed"):

@@ -2,6 +2,12 @@
 
 The SQL Workbench runs proof-of-concept queries against the newest successful project sandbox. It does not connect to production databases.
 
+## SQL Viewer
+
+Open **SQL Viewer** from the project workbench for a focused query-testing page. Paste or type one statement, drag selected SQL text onto the drop area, or drop one `.sql` file. The file is read locally by the browser and placed into the editor; it is not uploaded as a managed document.
+
+Select **Validate and test results** to run the same deterministic read-only validation used by the SQL Workbench. The query can execute only against a completed sandbox for the active model revision, with the standard authorizer, timeout and 500-row limit. Successful tests are recorded in SQL execution history.
+
 ## Validate and execute
 
 1. Build a sandbox from the active approved model and a sample dataset.
