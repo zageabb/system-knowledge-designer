@@ -152,6 +152,8 @@ def test_catalogue_always_presents_foreign_keys_as_one_to_many(tmp_path):
     assert b'data-relationship-field="one"' in catalogue.data and b'data-relationship-field="many"' in catalogue.data
     assert b"option.hidden=option.dataset.table!==selected" in catalogue.data
     assert b'<select name="data_type"' in catalogue.data
+    assert b"<th>One table</th><th>One field</th><th>Cardinality</th><th>Many table</th><th>Many field</th>" in catalogue.data
+    assert b'id="relationship-new"' in catalogue.data
     assert b"one-to-many" in catalogue.data
     assert b">many-to-one<" not in catalogue.data
 
