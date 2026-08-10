@@ -28,15 +28,15 @@
 <label>Question<textarea name="question" rows="6" required placeholder="How many purchase orders are there?">
 </textarea>
 </label>
-<fieldset><legend>Optional follow-up context</legend>{% for exchange in history %}<label>
+<fieldset class="checkbox-group"><legend>Optional follow-up context</legend>{% for exchange in history %}<label class="checkbox-option">
 <input type="checkbox" name="context_exchange_ids" value="{{exchange.id}}"> #{{exchange.id}} · {{exchange.question|truncate(80)}}</label>{% else %}<small>No prior exchanges.</small>{% endfor %}</fieldset>
 <small>Select up to three exchanges. History is never added automatically.</small>
-<label>
+<label class="checkbox-option">
 <input type="checkbox" name="use_sql"> Allow Ollama to build and run one validated read-only sandbox query</label>
-<small>Requires a completed sandbox from the active revision. No database path is supplied to Ollama.</small>
-<label>
+<small class="checkbox-help">Requires a completed sandbox from the active revision. No database path is supplied to Ollama.</small>
+<label class="checkbox-option">
 <input type="checkbox" name="use_tools"> Allow Ollama to select up to three non-executing read tools</label>
-<label>
+<label class="checkbox-option">
 <input type="checkbox" name="propose_actions"> Allow Ollama to suggest reviewable document links</label>
 <button class="primary">Retrieve evidence and ask Ollama</button>
 </form>{% if selected %}{% set answer=selected.answer_json|from_json %}<hr>{% if context_links.get(selected.id) %}<p>

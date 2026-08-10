@@ -50,6 +50,15 @@ def test_browser_assistant_persists_grounded_exchange(tmp_path, monkeypatch):
         assert evidence and evidence[0]["evidence_id"].startswith("schema:")
 
 
+def test_assistant_checkbox_options_use_aligned_label_layout(tmp_path):
+    app = make_app(tmp_path); project_id, revision_id, dataset_id = prepare(app); client = app.test_client(); client.post("/login", data={"username": "admin", "password": "test-password"})
+    page = client.get(f"/projects/{project_id}/assistant")
+    assert page.status_code == 200 and page.data.count(b'class="checkbox-option"') >= 3
+    assert b'class="checkbox-help"' in page.data and b'class="checkbox-group"' in page.data
+    css = client.get("/static/css/ai-records.css")
+    assert b"label.checkbox-option" in css.data and b'input[type="checkbox"]' in css.data and b"align-items: flex-start" in css.data
+
+
 def test_tool_planner_allows_only_bounded_allow_list():
     allowed = {"schema.inspect": "Inspect a table"}
     plan = plan_read_tools(question="Inspect supplier", evidence=[], allowed_tools=allowed, ollama_url="http://unused", ollama_model="test", client=FakeOllama({"tool_requests": [{"tool_name": "schema.inspect", "argument": "SUPPLIER", "reason": "Need fields"}]}))
