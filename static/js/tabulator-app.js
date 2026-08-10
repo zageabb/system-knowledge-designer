@@ -60,9 +60,14 @@
       }
       return definition;
     });
-    table._skdColumnCount = columns.length;
-    table._skdSetRows = rows => setRows(table, rows);
-    table._skdTabulator = new Tabulator(table, {
+    const host = document.createElement("div");
+    host.className = `${table.className} skd-tabulator-grid`.trim();
+    if (table.id) host.id = table.id;
+    for (const [name, value] of Object.entries(table.dataset)) host.dataset[name] = value;
+    table.replaceWith(host);
+    table._skdColumnCount = host._skdColumnCount = columns.length;
+    table._skdSetRows = host._skdSetRows = rows => setRows(table, rows);
+    table._skdTabulator = host._skdTabulator = new Tabulator(host, {
       data,
       columns,
       layout: "fitDataStretch",

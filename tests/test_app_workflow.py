@@ -33,6 +33,7 @@ def test_base_layout_loads_local_tabulator_for_all_tables(tmp_path):
     assert b'querySelectorAll("table")' in adapter.data
     assert b'headerFilter = "list"' in adapter.data
     assert b'headerFilter = "input"' in adapter.data
+    assert b'table.replaceWith(host)' in adapter.data
 
 
 def test_base_layout_has_keyboard_landmarks_and_visible_focus(tmp_path):
