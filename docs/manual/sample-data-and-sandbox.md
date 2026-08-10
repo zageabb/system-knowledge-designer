@@ -19,9 +19,9 @@ Unknown fields, missing non-null values and incompatible types are rejected rath
 
 ## Edit or delete rows
 
-Select **Edit** beside a stored row to open its pre-filled JSON editor. **Save changes** validates the fields and the complete dataset's relationships before persistence. The row's table cannot be changed in place.
+Select **Edit** beside a stored row to open a dedicated grid for that model table. Each field has its own input, with data type and required status shown in the column heading. **Save row** validates the fields and the complete dataset's relationships before persistence. Rows are saved individually and their table cannot be changed in place.
 
-Select **Delete row** and confirm the browser prompt to remove a row. A deletion is refused if another sample row still references it. Edit or remove dependent rows first, then delete the referenced row. Successful edits and deletions are recorded in the audit log.
+Select **Delete row** from the same grid and confirm the browser prompt to remove a row. A deletion is refused if another sample row still references it. Edit or remove dependent rows first, then delete the referenced row. Successful edits and deletions are recorded in the audit log.
 
 ## Delete a dataset
 

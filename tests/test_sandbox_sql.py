@@ -107,6 +107,30 @@ def test_browser_can_edit_sample_row(tmp_path):
     with app.app_context(): assert json.loads(db.session.get(SampleRowDefinition, row_id).values_json)["order_value"] == 250.0
 
 
+def test_edit_button_opens_table_grid_and_saves_typed_fields(tmp_path):
+    app = make_app(tmp_path); client = app.test_client(); client.post("/login", data={"username": "admin", "password": "test-password"})
+    project_id, revision_id, dataset_id = prepare(app)
+    with app.app_context(): row_id = SampleRowDefinition.query.filter_by(dataset_id=dataset_id, table_name="PURCHASE_ORDER").one().id
+    sample_page = client.get(f"/projects/{project_id}/sample-data")
+    grid_path = f"/projects/{project_id}/datasets/{dataset_id}/tables/PURCHASE_ORDER/edit"
+    assert f'href="{grid_path}"'.encode() in sample_page.data
+    grid = client.get(grid_path)
+    assert grid.status_code == 200 and b"EDIT VALIDATED SAMPLE ROWS" in grid.data
+    assert b"purchase_order_id" in grid.data and b"supplier_id" in grid.data and b"order_value" in grid.data
+    saved = client.post(f"/projects/{project_id}/datasets/{dataset_id}/rows/{row_id}/edit", data={"field:purchase_order_id": "10", "field:supplier_id": "1", "field:order_value": "325.50"}, follow_redirects=True)
+    assert saved.status_code == 200 and b"updated" in saved.data and b'value="325.5"' in saved.data
+    with app.app_context(): assert json.loads(db.session.get(SampleRowDefinition, row_id).values_json)["order_value"] == 325.5
+
+
+def test_table_grid_is_project_and_active_model_scoped(tmp_path):
+    app = make_app(tmp_path); client = app.test_client(); client.post("/login", data={"username": "admin", "password": "test-password"})
+    project_id, revision_id, dataset_id = prepare(app)
+    with app.app_context():
+        other = SystemProject(name="Other", slug="other"); db.session.add(other); db.session.commit(); other_id = other.id
+    assert client.get(f"/projects/{other_id}/datasets/{dataset_id}/tables/PURCHASE_ORDER/edit").status_code == 400
+    assert client.get(f"/projects/{project_id}/datasets/{dataset_id}/tables/MISSING/edit").status_code == 400
+
+
 def test_edit_cannot_break_existing_foreign_key(tmp_path):
     app = make_app(tmp_path); client = app.test_client(); client.post("/login", data={"username": "admin", "password": "test-password"})
     project_id, revision_id, dataset_id = prepare(app)
