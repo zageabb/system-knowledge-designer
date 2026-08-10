@@ -15,6 +15,14 @@ Set the environment values from `.env` in your shell (Flask does not load it wit
 
 Graphviz's `dot` executable is required for SVG/PNG export. On macOS: `brew install graphviz`.
 
+For a production WSGI launch, explicitly configure secure `SECRET_KEY` and `ADMIN_PASSWORD` values, `DATABASE_URL`, and an absolute `DATA_DIR`, then run:
+
+```bash
+.venv/bin/gunicorn --bind 127.0.0.1:5015 --workers 2 --timeout 120 wsgi:application
+```
+
+The production entry point rejects missing or development-default security settings. Use `/health` for liveness and `/ready` for dependency readiness.
+
 To add the idempotent synthetic procurement demonstration to the local database:
 
 ```bash
@@ -43,4 +51,4 @@ python3 -m scripts.seed_demo
 
 ## Important current boundary
 
-This repository does **not** claim the brief's first usable release is complete. Background jobs, extended document extraction, richer assistant actions, external-evidence promotion, cross-project execution and scale hardening remain roadmap work and are not represented by placeholder success paths.
+This repository does **not** yet claim final release readiness. Background render/export, CSV and dataset-version workflows, optional MSG/OCR ingestion, page-level accessibility verification and release packaging remain roadmap work and are not represented by placeholder success paths.

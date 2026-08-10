@@ -16,8 +16,12 @@ Separated process liveness from dependency readiness. `/health` remains a minima
 
 ## Remaining Phase 8 scope
 
-Background render/export execution, broader accessibility verification and production deployment packaging remain outstanding.
+Background render/export execution, broader accessibility verification and release packaging remain outstanding.
 
 ## Accessibility baseline
 
 The shared layout now includes a keyboard skip link, labelled primary navigation, a programmatically focusable main landmark and a high-visibility `:focus-visible` treatment. Non-interactive navigation placeholders were removed so they are not announced as unavailable destinations. Automated layout coverage verifies these shared guarantees; page-level semantic and contrast auditing remains outstanding.
+
+## Production launch baseline
+
+`wsgi:application` provides the production WSGI entry point and Gunicorn is pinned in the application requirements. Startup validation fails closed unless the session secret, administrator password, database URL and absolute managed-data path are explicitly configured. Unit tests cover accepted settings, each unsafe default and redaction of supplied secret values.
