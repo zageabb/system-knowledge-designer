@@ -22,6 +22,17 @@ def test_base_layout_loads_scrollable_workbench_styles(tmp_path):
     assert b"overflow-x: scroll" in css.data and b"width: max-content" in css.data
 
 
+def test_base_layout_has_keyboard_landmarks_and_visible_focus(tmp_path):
+    app = make_app(tmp_path); client = app.test_client(); login(client)
+    page = client.get("/")
+    assert b'href="#main-content"' in page.data
+    assert b'<main id="main-content" tabindex="-1">' in page.data
+    assert b'<nav aria-label="Primary navigation">' in page.data
+    assert b"<span>Search</span>" not in page.data
+    css = client.get("/static/css/app.css")
+    assert b".skip-link" in css.data and b":focus-visible" in css.data
+
+
 def test_notifications_render_as_floating_dismissible_toasts(tmp_path):
     app = make_app(tmp_path); client = app.test_client(); login(client)
     response = client.post("/projects", data={})

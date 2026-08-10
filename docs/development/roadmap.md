@@ -9,7 +9,7 @@
 | 5 complete | Assistant SQL answering, deterministic sample aggregation, Ollama, bounded cited history, SQL proposals, typed/manual/opt-in model-selected read tools, activity views, SQL diagram highlighting, confirmed document and precise chunk-link proposals, and explicit multi-exchange follow-ups delivered |
 | 6 complete | Background execution and cooperative running-request cancellation delivered alongside sanitised review-before-send Wikipedia research, persisted progress/citations, local-only failure mode, selected evidence promotion, unsent cancellation and reviewed retries |
 | 7 complete | Central project links, bounded traversal, trusted aliases, explicit selected-document attachments, alias-aware federation and persisted integrity scans delivered |
-| 8 | Background render/export, accessibility and production packaging (scale profiles and liveness/readiness probes delivered) |
+| 8 | Background render/export, page-level accessibility audit and production packaging (scale profiles, shared keyboard/focus baseline and liveness/readiness probes delivered) |
 
 No row in this roadmap is considered delivered until its automated acceptance tests pass.
 
