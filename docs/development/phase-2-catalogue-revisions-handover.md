@@ -8,6 +8,8 @@ Catalogue relationship rows use a consistent one-to-many reading order: the refe
 
 The latest catalogue revision is editable. Users can add and rename tables, add and edit fields and their markers, and add or edit one-to-many relationships. Every catalogue save validates the complete structured model, creates an immutable draft revision, and deterministically regenerates canonical ER source; saving ER source in the workbench continues to rematerialise the catalogue in the opposite direction. Historical catalogues remain read-only.
 
+Field data types use a controlled dropdown containing common ER types while retaining any existing custom type. Relationship table references are selected from the revision catalogue, and each relationship field dropdown is dynamically limited to fields belonging to its selected table; the server still validates every submitted reference.
+
 The documentation workstream now has a real user manual and normative ER syntax reference. Every fenced `.erd` example is executed through the current parser during tests, and local Markdown links are checked.
 
 ## Files and architecture

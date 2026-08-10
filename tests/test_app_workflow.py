@@ -132,9 +132,12 @@ def test_catalogue_always_presents_foreign_keys_as_one_to_many(tmp_path):
 
     assert catalogue.status_code == 200
     assert b"One table" in catalogue.data and b"Many table" in catalogue.data
-    assert b'name="one_table" value="PARENT"' in catalogue.data
-    assert b'name="many_table" value="CHILD"' in catalogue.data
-    assert catalogue.data.index(b'name="one_table" value="PARENT"') < catalogue.data.index(b'name="many_table" value="CHILD"')
+    assert b'name="one_table" data-relationship-table="one"' in catalogue.data
+    assert b'name="many_table" data-relationship-table="many"' in catalogue.data
+    assert catalogue.data.index(b'name="one_table"') < catalogue.data.index(b'name="many_table"')
+    assert b'data-relationship-field="one"' in catalogue.data and b'data-relationship-field="many"' in catalogue.data
+    assert b"option.hidden=option.dataset.table!==selected" in catalogue.data
+    assert b'<select name="data_type"' in catalogue.data
     assert b"one-to-many" in catalogue.data
     assert b">many-to-one<" not in catalogue.data
 
