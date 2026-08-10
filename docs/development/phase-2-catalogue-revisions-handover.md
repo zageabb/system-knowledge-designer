@@ -4,6 +4,8 @@
 
 Implemented a structured catalogue view for any project revision, conflict-safe editor saves, `.erd` and structured JSON exports, unified source comparison, and restore-as-new. Historical revisions remain immutable, and restoring reparses source into a new structured draft.
 
+Catalogue relationship rows use a consistent one-to-many reading order: the referenced parent field is shown under **One**, followed by the foreign-key dependant under **Many**. This is a presentation rule only; authoritative source and stored foreign-key direction remain unchanged.
+
 The documentation workstream now has a real user manual and normative ER syntax reference. Every fenced `.erd` example is executed through the current parser during tests, and local Markdown links are checked.
 
 ## Files and architecture

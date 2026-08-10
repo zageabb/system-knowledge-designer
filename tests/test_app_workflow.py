@@ -102,3 +102,37 @@ def test_catalogue_exports_diff_restore_and_conflict_detection(tmp_path):
     with app.app_context():
         latest = DiagramRevision.query.filter_by(project_id=project_id).order_by(DiagramRevision.revision_number.desc()).first()
         assert latest.revision_number == 3 and latest.status == "draft" and latest.source == source1
+
+
+def test_catalogue_always_presents_foreign_keys_as_one_to_many(tmp_path):
+    app = make_app(tmp_path); client = app.test_client(); login(client)
+    created = client.post("/projects", data={"name": "Relationship Catalogue", "dialect": "sqlite"})
+    project_id = int(created.location.split("/")[2])
+    source = '''erModel Relationship_Catalogue {
+ dialect "sqlite"
+ direction LR
+ subjectArea Core {
+  table PARENT {
+   integer parent_id PK
+  }
+  table CHILD {
+   integer child_id PK
+   integer parent_id FK
+  }
+  relationship CHILD.parent_id -> PARENT.parent_id {
+   cardinality many-to-one
+   label "belongs to"
+  }
+ }
+}'''
+    saved = client.post(created.location, data={"source": source, "action": "save", "base_revision_number": "0"})
+    assert saved.status_code == 200
+
+    catalogue = client.get(f"/projects/{project_id}/catalogue")
+
+    assert catalogue.status_code == 200
+    assert b"<th>One</th><th>Many</th><th>Cardinality</th>" in catalogue.data
+    assert b"PARENT.parent_id" in catalogue.data
+    assert catalogue.data.index(b"PARENT.parent_id") < catalogue.data.index(b"CHILD.parent_id")
+    assert b"one-to-many" in catalogue.data
+    assert b">many-to-one<" not in catalogue.data
