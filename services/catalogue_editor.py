@@ -36,13 +36,13 @@ def edit_catalogue(model: ERModel, action: str, values: Mapping[str, str]) -> tu
     elif action == "add_column":
         table = _table(edited, values.get("table", "")); name = _identifier(values.get("name", ""), "Field name")
         if _column(table, name, required=False): raise CatalogueEditError(f"Field '{table.name}.{name}' already exists.")
-        table.columns.append(ERColumn(name=name, data_type=_identifier(values.get("data_type", "string"), "Data type"), markers=_markers(values)))
+        table.columns.append(ERColumn(name=name, data_type=_identifier(values.get("data_type", "string"), "Data type"), description=_description(values), markers=_markers(values)))
     elif action == "update_column":
         table = _table(edited, values.get("table", "")); column = _column(table, values.get("original_column", ""))
         old_name = column.name; new_name = _identifier(values.get("name", ""), "Field name")
         duplicate = _column(table, new_name, required=False)
         if duplicate is not None and duplicate is not column: raise CatalogueEditError(f"Field '{table.name}.{new_name}' already exists.")
-        column.name = new_name; column.data_type = _identifier(values.get("data_type", ""), "Data type"); column.markers = _markers(values)
+        column.name = new_name; column.data_type = _identifier(values.get("data_type", ""), "Data type"); column.description = _description(values); column.markers = _markers(values)
         for relationship in edited.relationships:
             if relationship.source_table.casefold() == table.name.casefold() and relationship.source_column.casefold() == old_name.casefold(): relationship.source_column = new_name
             if relationship.target_table.casefold() == table.name.casefold() and relationship.target_column.casefold() == old_name.casefold(): relationship.target_column = new_name
@@ -78,7 +78,7 @@ def edit_catalogue(model: ERModel, action: str, values: Mapping[str, str]) -> tu
 
 
 def model_to_er_source(model: ERModel) -> str:
-    lines = [f"erModel {model.name} {{", f"  dialect {json.dumps(model.dialect)}", f"  direction {model.direction}"]
+    lines = [f"erModel {model.name} {{", f"  dialect {json.dumps(model.dialect)};", f"  direction {model.direction};"]
     areas: dict[str, list[ERTable]] = {}
     for table in model.tables: areas.setdefault(table.subject_area, []).append(table)
     for area, tables in areas.items():
@@ -88,17 +88,18 @@ def model_to_er_source(model: ERModel) -> str:
             for column in table.columns:
                 suffix = "".join(f" {marker}" for marker in column.markers)
                 suffix += "".join(f" {key}={_value(value)}" for key, value in column.attributes.items())
-                lines.append(f"      {column.data_type} {column.name}{suffix}")
+                suffix += f" description={json.dumps(column.description)}"
+                lines.append(f"      {column.data_type} {column.name}{suffix};")
             lines.append("    }")
         lines.append("  }")
     for relationship in model.relationships:
         lines.extend((
             f"  relationship {relationship.source_table}.{relationship.source_column} -> {relationship.target_table}.{relationship.target_column} {{",
-            "    cardinality many-to-one",
-            *( [f"    label {json.dumps(relationship.label)}"] if relationship.label else [] ),
+            "    cardinality many-to-one;",
+            *( [f"    label {json.dumps(relationship.label)};"] if relationship.label else [] ),
         ))
         for key, value in relationship.attributes.items():
-            if not key.startswith("composite_"): lines.append(f"    {key} {_value(value)}")
+            if not key.startswith("composite_"): lines.append(f"    {key} {_value(value)};")
         lines.append("  }")
     lines.append("}")
     return "\n".join(lines) + "\n"
@@ -117,6 +118,10 @@ def _kind(value: str) -> str:
 
 def _markers(values: Mapping[str, str]) -> list[str]:
     return [marker for marker, field in (("PK", "primary_key"), ("FK", "foreign_key"), ("not_null", "not_null"), ("unique", "unique")) if values.get(field)]
+
+
+def _description(values: Mapping[str, str]) -> str:
+    return values.get("description", "").strip()[:2000]
 
 
 def _table(model: ERModel, name: str, *, required: bool = True) -> ERTable | None:

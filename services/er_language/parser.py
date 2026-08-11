@@ -62,7 +62,8 @@ class _Transformer(Transformer):
     def column(self, data_type, name, *items):
         markers = [x[1] for x in items if x[0] == "marker"]
         attrs = {x[1]: x[2] for x in items if x[0] == "attribute"}
-        return ERColumn(name=str(name), data_type=str(data_type), markers=markers, attributes=attrs)
+        description = str(attrs.pop("description", ""))
+        return ERColumn(name=str(name), data_type=str(data_type), description=description, markers=markers, attributes=attrs)
     def table(self, kind, name, *columns):
         return ("table", str(kind), str(name), list(columns))
     def reference(self, table, column): return (str(table), str(column))
