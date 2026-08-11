@@ -33,7 +33,10 @@ def test_field_description_is_typed_and_rendered_in_preview():
     source = SOURCE.replace("string name length=200 not_null", 'string name length=200 not_null description="Legal supplier name";')
     model = parse_er_source(source)
     assert model.tables[0].columns[1].description == "Legal supplier name"
-    assert "Legal supplier name" in model_to_dot(model)
+    dot = model_to_dot(model)
+    assert "Legal supplier name" in dot
+    assert 'PORT="name_e" ALIGN="LEFT"' in dot
+    assert 'PORT="name_e" ALIGN="LEFT"><FONT COLOR="#475569">Legal supplier name' in dot
 
 def test_dot_connects_exact_field_ports():
     dot = model_to_dot(parse_er_source(SOURCE))
