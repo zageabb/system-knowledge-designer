@@ -1079,21 +1079,21 @@ def persist_assistant_sql_execution(project, result: dict) -> SQLExecution:
 def starter_source(name: str) -> str:
     model_name = re.sub(r"[^A-Za-z0-9_]", "_", name) or "New_System"
     return f'''erModel {model_name} {{
-  dialect "sqlite"
-  direction LR
+  dialect "sqlite";
+  direction LR;
   subjectArea Core {{
     table SUPPLIER {{
-      integer supplier_id PK
-      string supplier_name length=200 not_null
+      integer supplier_id PK description="Unique supplier identifier";
+      string supplier_name length=200 not_null description="Supplier display name";
     }}
     table PURCHASE_ORDER {{
-      integer purchase_order_id PK
-      integer supplier_id FK not_null
-      decimal order_value precision=18 scale=2
+      integer purchase_order_id PK description="Unique purchase order identifier";
+      integer supplier_id FK not_null description="Supplier that receives the order";
+      decimal order_value precision=18 scale=2 description="Total monetary value of the order";
     }}
     relationship PURCHASE_ORDER.supplier_id -> SUPPLIER.supplier_id {{
-      cardinality many-to-one
-      label "placed with"
+      cardinality many-to-one;
+      label "placed with";
     }}
   }}
 }}'''
@@ -1101,4 +1101,4 @@ def starter_source(name: str) -> str:
 
 app = create_app()
 
-if __name__ == "__main__": app.run(host="127.0.0.1", port=5015)
+if __name__ == "__main__": app.run(host="0.0.0.0", port=5015)

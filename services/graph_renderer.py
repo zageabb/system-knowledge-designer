@@ -22,17 +22,19 @@ def model_to_dot(model: ERModel, highlights: set[str] | None = None) -> str:
         for table in tables:
             table_highlighted = table.name.casefold() in highlights
             fill = "#fef3c7" if table_highlighted else "#e0f2fe"
-            rows = [f'<TR><TD COLSPAN="3" BGCOLOR="{fill}"><B>{html.escape(table.name)}</B></TD></TR>']
+            rows = [f'<TR><TD COLSPAN="4" BGCOLOR="{fill}"><B>{html.escape(table.name)}</B></TD></TR>']
             for column in table.columns:
                 marker = "PK" if "PK" in column.markers else "FK" if "FK" in column.markers else ""
                 port = _ident(column.name)
                 column_key = f"{table.name}.{column.name}".casefold()
                 row_fill = ' BGCOLOR="#fde68a"' if column_key in highlights else ""
+                description = html.escape(column.description) or "&#160;"
                 rows.append(
                     f'<TR><TD PORT="{port}_w"{row_fill}>{marker}</TD>'
                     f'<TD ALIGN="LEFT"{row_fill}>{html.escape(column.name)}</TD>'
                     f'<TD PORT="{port}_e" ALIGN="LEFT"{row_fill}><FONT COLOR="#64748b">'
-                    f'{html.escape(column.data_type)}</FONT></TD></TR>'
+                    f'{html.escape(column.data_type)}</FONT></TD>'
+                    f'<TD ALIGN="LEFT"{row_fill}><FONT COLOR="#475569">{description}</FONT></TD></TR>'
                 )
             label = '<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5">' + "".join(rows) + "</TABLE>>"
             lines.append(f'{_ident(table.name)} [id="table-{_ident(table.name)}" label={label}];')

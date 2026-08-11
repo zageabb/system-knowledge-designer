@@ -28,6 +28,13 @@ def test_parse_valid_model_to_typed_ir():
     assert model.tables[0].columns[1].attributes == {"length": 200}
     assert model.relationships[0].label == "placed with"
 
+
+def test_field_description_is_typed_and_rendered_in_preview():
+    source = SOURCE.replace("string name length=200 not_null", 'string name length=200 not_null description="Legal supplier name";')
+    model = parse_er_source(source)
+    assert model.tables[0].columns[1].description == "Legal supplier name"
+    assert "Legal supplier name" in model_to_dot(model)
+
 def test_dot_connects_exact_field_ports():
     dot = model_to_dot(parse_er_source(SOURCE))
     assert "SUPPLIER:supplier_id_e:e -> PO:supplier_id_w:w" in dot
@@ -67,7 +74,7 @@ def test_graphviz_exports_valid_svg_and_scaled_png(tmp_path):
 def test_graph_renderer_highlights_referenced_table_and_field():
     dot = model_to_dot(parse_er_source(SOURCE), {"SUPPLIER", "SUPPLIER.name"})
     assert 'BGCOLOR="#fef3c7"' in dot
-    assert dot.count('BGCOLOR="#fde68a"') == 3
+    assert dot.count('BGCOLOR="#fde68a"') == 4
 
 
 def test_composite_key_relationship_expands_ordered_field_pairs():

@@ -77,6 +77,7 @@ class ColumnDefinition(db.Model):
     position = db.Column(db.Integer, nullable=False)
     name = db.Column(db.String(160), nullable=False)
     data_type = db.Column(db.String(80), nullable=False)
+    description = db.Column(db.Text, default="", nullable=False)
     nullable = db.Column(db.Boolean, default=True, nullable=False)
     primary_key = db.Column(db.Boolean, default=False, nullable=False)
     foreign_key = db.Column(db.Boolean, default=False, nullable=False)

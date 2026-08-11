@@ -175,7 +175,7 @@ def test_catalogue_edits_create_revision_and_regenerate_er_source(tmp_path):
 
     added_table = client.post(f"/projects/{project_id}/catalogue", data={"action": "add_table", "base_revision_number": "1", "name": "CHILD", "subject_area": "Core", "kind": "table"})
     assert added_table.status_code == 302 and "revision_id=" in added_table.location
-    added_field = client.post(f"/projects/{project_id}/catalogue", data={"action": "add_column", "base_revision_number": "2", "table": "CHILD", "name": "parent_id", "data_type": "integer", "foreign_key": "1"})
+    added_field = client.post(f"/projects/{project_id}/catalogue", data={"action": "add_column", "base_revision_number": "2", "table": "CHILD", "name": "parent_id", "data_type": "integer", "description": "Parent record identifier", "foreign_key": "1"})
     assert added_field.status_code == 302
     added_relationship = client.post(f"/projects/{project_id}/catalogue", data={"action": "add_relationship", "base_revision_number": "3", "one_table": "PARENT", "one_column": "parent_id", "many_table": "CHILD", "many_column": "parent_id", "label": "has children"})
     assert added_relationship.status_code == 302
@@ -188,3 +188,6 @@ def test_catalogue_edits_create_revision_and_regenerate_er_source(tmp_path):
         revisions = DiagramRevision.query.filter_by(project_id=project_id).order_by(DiagramRevision.revision_number).all()
         assert len(revisions) == 4
         assert "table CHILD" in revisions[-1].source
+        assert 'description="Parent record identifier";' in revisions[-1].source
+        child = TableDefinition.query.filter_by(revision_id=revisions[-1].id, name="CHILD").one()
+        assert child.columns[0].description == "Parent record identifier"

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 class ERColumn(BaseModel):
     name: str
     data_type: str
+    description: str = ""
     markers: list[str] = Field(default_factory=list)
     attributes: dict[str, Any] = Field(default_factory=dict)
 

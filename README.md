@@ -11,14 +11,14 @@ cp .env.example .env
 .venv/bin/flask --app app run --host=127.0.0.1 --port=5015
 ```
 
-Set the environment values from `.env` in your shell (Flask does not load it without `python-dotenv`). Open <http://127.0.0.1:5015> and use the configured admin credentials. The development defaults are `admin` / `change-me`; change them before any network-accessible run.
+Set the environment values from `.env` in your shell (Flask does not load it without `python-dotenv`). Open `http://<server-ip>:5015` and use the configured admin credentials. The development defaults are `admin` / `change-me`; change them before any network-accessible run.
 
 Graphviz's `dot` executable is required for SVG/PNG export. On macOS: `brew install graphviz`.
 
 For a production WSGI launch, explicitly configure secure `SECRET_KEY` and `ADMIN_PASSWORD` values, `DATABASE_URL`, and an absolute `DATA_DIR`, then run:
 
 ```bash
-.venv/bin/gunicorn --bind 127.0.0.1:5015 --workers 2 --timeout 120 wsgi:application
+.venv/bin/gunicorn --bind 0.0.0.0:5015 --workers 2 --timeout 120 wsgi:application
 ```
 
 The production entry point rejects missing or development-default security settings. Use `/health` for liveness and `/ready` for dependency readiness.

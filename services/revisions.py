@@ -18,7 +18,7 @@ def create_revision(project: SystemProject, source: str, model: ERModel, note: s
         record = TableDefinition(project_id=project.id, revision_id=revision.id, subject_area=table.subject_area, name=table.name, kind=table.kind)
         db.session.add(record); db.session.flush()
         for position, column in enumerate(table.columns):
-            db.session.add(ColumnDefinition(table=record, position=position, name=column.name, data_type=column.data_type, nullable=column.nullable, primary_key="PK" in column.markers, foreign_key="FK" in column.markers, unique="unique" in column.markers, attributes_json=json.dumps(column.attributes, sort_keys=True)))
+            db.session.add(ColumnDefinition(table=record, position=position, name=column.name, data_type=column.data_type, description=column.description, nullable=column.nullable, primary_key="PK" in column.markers, foreign_key="FK" in column.markers, unique="unique" in column.markers, attributes_json=json.dumps(column.attributes, sort_keys=True)))
     for rel in model.relationships:
         db.session.add(RelationshipDefinition(project_id=project.id, revision_id=revision.id, source_table=rel.source_table, source_column=rel.source_column, target_table=rel.target_table, target_column=rel.target_column, cardinality=rel.cardinality, label=rel.label))
     db.session.flush()
