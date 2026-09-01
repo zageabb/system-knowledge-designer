@@ -97,3 +97,4 @@ main {
   .search-runtime-layout { grid-template-columns: 1fr; }
   .search-activity-panel { position: static; max-height: none; }
 }
+.data-browser-table{overflow:auto;max-height:70vh}.data-browser-table table{min-width:max-content}.data-browser-table th{position:sticky;top:0;z-index:1}.data-browser-table input,.data-browser-table textarea{min-width:12rem;max-width:24rem}.data-browser-table textarea{resize:vertical}.protected-value{display:block;max-width:24rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

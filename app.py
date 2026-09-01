@@ -35,6 +35,7 @@ from services.project_graph import ProjectGraphError, RELATIONSHIP_TYPES, normal
 from services.er_includes import include_sources, normalize_include_name
 from services.readiness import readiness_report
 from services.catalogue_editor import CatalogueEditError, edit_catalogue
+from services.database_browser import DatabaseBrowserError, available_tables, editable_columns, read_page, resolve_table, update_record
 
 login_manager = LoginManager()
 csrf = CSRFProtect()
@@ -132,6 +133,50 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         selected_id = request.args.get("project_id", type=int); traversal = traverse_projects(selected_id, links) if selected_id else []
         project_by_id = {project.id: project for project in projects}; latest_scan = ProjectIntegrityScan.query.order_by(ProjectIntegrityScan.id.desc()).first()
         return render_template("system_map.html", projects=projects, links=links, aliases=aliases, attachments=attachments, attachable_documents=attachable_documents, relationship_types=sorted(RELATIONSHIP_TYPES), selected_id=selected_id, traversal=traversal, project_by_id=project_by_id, latest_scan=latest_scan)
+
+    @app.get("/data-browser")
+    @login_required
+    def data_browser():
+        if not current_user.is_admin:
+            return ("Administrator access required", 403)
+        tables = available_tables()
+        selected_name = request.args.get("table", tables[0].name if tables else "")
+        try:
+            selected_table = resolve_table(selected_name)
+            page = max(request.args.get("page", 1, type=int), 1)
+            rows, total = read_page(selected_table, page)
+        except DatabaseBrowserError as exc:
+            return (str(exc), 404)
+        visible_columns = [column for column in selected_table.columns if column.name != "password_hash"]
+        return render_template(
+            "data_browser.html",
+            tables=tables,
+            selected_table=selected_table,
+            primary_key_name=list(selected_table.primary_key.columns)[0].name,
+            visible_columns=visible_columns,
+            editable_names={column.name for column in editable_columns(selected_table)},
+            rows=rows,
+            page=page,
+            page_size=50,
+            total=total,
+        )
+
+    @app.post("/data-browser/<table_name>/<record_id>/edit")
+    @login_required
+    def edit_database_record(table_name, record_id):
+        if not current_user.is_admin:
+            return ("Administrator access required", 403)
+        try:
+            table = resolve_table(table_name)
+            object_id, changed_fields = update_record(table, record_id, request.form)
+            audit("database_record.update", table.name, object_id, f"fields={','.join(changed_fields)}")
+            db.session.commit()
+            flash(f"Updated {table.name} record {object_id}.", "success")
+        except (DatabaseBrowserError, IntegrityError) as exc:
+            db.session.rollback()
+            message = str(exc.orig) if isinstance(exc, IntegrityError) else str(exc)
+            flash(f"Record was not updated: {message}", "danger")
+        return redirect(url_for("data_browser", table=table_name, page=request.args.get("page", 1, type=int)))
 
     @app.post("/system-map/attachments/<int:attachment_id>/delete")
     @login_required

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Data browser · System Knowledge Designer{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">ADMINISTRATION</p><h1>Data browser</h1><p>Inspect every application table and edit safe scalar fields. Primary keys, foreign keys, timestamps, credentials, and audit history are protected.</p></div></div>
+
+<section class="card">
+  <form method="get" class="inline-form">
+    <label>Table
+      <select name="table" onchange="this.form.submit()">
+        {% for table in tables %}<option value="{{table.name}}" {% if table.name == selected_table.name %}selected{% endif %}>{{table.name}}</option>{% endfor %}
+      </select>
+    </label>
+    <button>Open table</button>
+  </form>
+</section>
+
+<section class="card">
+  <div class="page-head"><div><h2>{{selected_table.name}}</h2><p>{{total}} record(s) · page {{page}}{% if not editable_names %} · Read only{% endif %}</p></div></div>
+  <div class="data-browser-table">
+    <table>
+      <thead><tr>{% for column in visible_columns %}<th>{{column.name}}</th>{% endfor %}<th>Action</th></tr></thead>
+      <tbody>
+      {% for row in rows %}
+        {% set form_id = 'edit-' ~ selected_table.name ~ '-' ~ row[primary_key_name] %}
+        <tr>
+          {% for column in visible_columns %}
+          <td>
+            {% if column.name in editable_names %}
+              <label class="visually-hidden" for="{{form_id}}-{{column.name}}">{{column.name}}</label>
+              {% if column.type|string == 'TEXT' %}<textarea id="{{form_id}}-{{column.name}}" form="{{form_id}}" name="{{column.name}}" rows="3">{{row[column.name] if row[column.name] is not none else ''}}</textarea>
+              {% else %}<input id="{{form_id}}-{{column.name}}" form="{{form_id}}" name="{{column.name}}" value="{{row[column.name] if row[column.name] is not none else ''}}">{% endif %}
+            {% else %}<span class="protected-value">{{row[column.name] if row[column.name] is not none else '—'}}</span>{% endif %}
+          </td>
+          {% endfor %}
+          <td><form id="{{form_id}}" method="post" action="{{url_for('edit_database_record',table_name=selected_table.name,record_id=row[primary_key_name],page=page)}}"><input type="hidden" name="csrf_token" value="{{csrf_token()}}"><button class="primary" {% if not editable_names %}disabled{% endif %}>Save</button></form></td>
+        </tr>
+      {% else %}<tr><td colspan="{{visible_columns|length + 1}}">No records in this table.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="actions">
+    {% if page > 1 %}<a class="button" href="{{url_for('data_browser',table=selected_table.name,page=page-1)}}">Previous</a>{% endif %}
+    {% if page * page_size < total %}<a class="button" href="{{url_for('data_browser',table=selected_table.name,page=page+1)}}">Next</a>{% endif %}
+  </div>
+</section>
+{% endblock %}
