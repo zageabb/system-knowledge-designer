@@ -12,6 +12,18 @@ def test_login_is_required(tmp_path):
     assert response.status_code == 302 and "/login" in response.location
 
 
+def test_stale_non_numeric_user_session_redirects_to_login(tmp_path):
+    client = make_app(tmp_path).test_client()
+    with client.session_transaction() as session:
+        session["_user_id"] = "admin"
+        session["_fresh"] = True
+
+    response = client.get("/")
+
+    assert response.status_code == 302
+    assert response.headers["Location"].startswith("/login")
+
+
 def test_base_layout_loads_scrollable_workbench_styles(tmp_path):
     app = make_app(tmp_path); client = app.test_client(); login(client)
     page = client.get("/")

@@ -70,7 +70,12 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     login_manager.login_view = "login"
 
     @login_manager.user_loader
-    def load_user(user_id): return db.session.get(User, int(user_id))
+    def load_user(user_id):
+        try:
+            database_id = int(user_id)
+        except (TypeError, ValueError):
+            return None
+        return db.session.get(User, database_id)
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
