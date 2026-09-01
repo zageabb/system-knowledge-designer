@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 from config import Config
 from database import db
-from models import AIAction, AssistantContextLink, AssistantExchange, AssistantToolCall, AuditEvent, ChunkKnowledgeLink, CrossProjectAttachment, DiagramRevision, DocumentChunk, DocumentVersion, ERInclude, EvidenceRecord, ExternalResearchJob, ExternalResearchJobEvent, ExternalResearchPromotion, KnowledgeDocument, KnowledgeLink, ProjectAlias, ProjectIntegrityScan, ProjectLink, RelationshipDefinition, SampleDataset, SampleRowDefinition, SandboxBuild, SQLExecution, SystemProject, TableDefinition, User, utcnow
+from models import AIAction, AssistantContextLink, AssistantExchange, AssistantToolCall, AuditEvent, ChunkKnowledgeLink, CrossProjectAttachment, DiagramRevision, DocumentChunk, DocumentVersion, ERInclude, EvidenceRecord, ExternalResearchJob, ExternalResearchJobEvent, ExternalResearchPromotion, KnowledgeDocument, KnowledgeLink, Portfolio, ProjectAlias, ProjectIntegrityScan, ProjectLink, RelationshipDefinition, SampleDataset, SampleRowDefinition, SandboxBuild, SQLExecution, SystemProject, TableDefinition, User, utcnow
 from services.er_language import ERParseError, parse_er_source
 from services.graph_renderer import model_to_dot, render_graphviz, render_graphviz_bytes
 from services.revisions import create_revision, revision_model, unified_source_diff
@@ -43,6 +43,15 @@ csrf = CSRFProtect()
 
 def slugify(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
+
+
+def unique_slug(model, value: str, fallback: str) -> str:
+    base = slugify(value) or fallback
+    slug = base
+    suffix = 2
+    while model.query.filter_by(slug=slug).first():
+        slug, suffix = f"{base}-{suffix}", suffix + 1
+    return slug
 
 
 def _dataset_rows(dataset, replacement=None, excluded_row_id=None):
@@ -94,8 +103,41 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     @app.route("/")
     @login_required
     def dashboard():
-        projects = SystemProject.query.order_by(SystemProject.updated_at.desc()).all()
-        return render_template("dashboard.html", projects=projects)
+        portfolios = Portfolio.query.order_by(Portfolio.name).all()
+        selected = request.args.get("portfolio", "all")
+        query = SystemProject.query
+        selected_portfolio = None
+        if selected == "unassigned":
+            query = query.filter(SystemProject.portfolio_id.is_(None))
+        elif selected != "all":
+            selected_portfolio = db.session.get(Portfolio, request.args.get("portfolio", type=int))
+            if selected_portfolio is None:
+                return ("Portfolio does not exist", 404)
+            query = query.filter_by(portfolio_id=selected_portfolio.id)
+        projects = query.order_by(SystemProject.updated_at.desc()).all()
+        return render_template("dashboard.html", projects=projects, portfolios=portfolios, selected=selected, selected_portfolio=selected_portfolio)
+
+    @app.post("/portfolios")
+    @login_required
+    def create_portfolio_route():
+        portfolio_name = request.form.get("portfolio_name", "").strip()
+        project_name = request.form.get("project_name", "").strip()
+        if not portfolio_name or not project_name:
+            flash("Portfolio name and first project name are required.", "danger")
+            return redirect(url_for("dashboard"))
+        try:
+            portfolio = Portfolio(name=portfolio_name, slug=unique_slug(Portfolio, portfolio_name, "portfolio"), description=request.form.get("portfolio_description", "").strip())
+            db.session.add(portfolio); db.session.flush()
+            project = SystemProject(name=project_name, slug=unique_slug(SystemProject, project_name, "project"), description=request.form.get("project_description", "").strip(), dialect=request.form.get("dialect", "sqlite"), portfolio_id=portfolio.id)
+            db.session.add(project); db.session.flush()
+            audit("portfolio.create", "Portfolio", portfolio.id, f"initial_project={project.id}")
+            audit("project.create", "SystemProject", project.id, f"portfolio={portfolio.id}")
+            db.session.commit()
+            flash(f"Created {portfolio.name} with its first project, {project.name}.", "success")
+            return redirect(url_for("dashboard", portfolio=portfolio.id))
+        except IntegrityError as exc:
+            db.session.rollback(); flash(f"Portfolio was not created: {exc.orig}", "danger")
+            return redirect(url_for("dashboard"))
 
     @app.route("/system-map", methods=["GET", "POST"])
     @login_required
@@ -191,11 +233,26 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     def create_project_route():
         name = request.form.get("name", "").strip()
         if not name: flash("Project name is required.", "danger"); return redirect(url_for("dashboard"))
-        base = slugify(name) or "project"; slug = base; suffix = 2
-        while SystemProject.query.filter_by(slug=slug).first(): slug, suffix = f"{base}-{suffix}", suffix + 1
-        project = SystemProject(name=name, slug=slug, description=request.form.get("description", "").strip(), dialect=request.form.get("dialect", "sqlite"))
+        portfolio_id = request.form.get("portfolio_id", type=int)
+        if portfolio_id and not db.session.get(Portfolio, portfolio_id):
+            flash("Selected portfolio does not exist.", "danger"); return redirect(url_for("dashboard"))
+        project = SystemProject(name=name, slug=unique_slug(SystemProject, name, "project"), description=request.form.get("description", "").strip(), dialect=request.form.get("dialect", "sqlite"), portfolio_id=portfolio_id)
         db.session.add(project); db.session.flush(); audit("project.create", "SystemProject", project.id, name); db.session.commit()
         return redirect(url_for("workbench", project_id=project.id))
+
+    @app.post("/projects/<int:project_id>/portfolio")
+    @login_required
+    def assign_project_portfolio(project_id):
+        project = db.get_or_404(SystemProject, project_id)
+        portfolio_id = request.form.get("portfolio_id", type=int)
+        portfolio = db.session.get(Portfolio, portfolio_id) if portfolio_id else None
+        if portfolio_id and portfolio is None:
+            flash("Selected portfolio does not exist.", "danger")
+        else:
+            project.portfolio_id = portfolio.id if portfolio else None
+            audit("project.portfolio.assign", "SystemProject", project.id, f"portfolio={portfolio.id if portfolio else 'none'}")
+            db.session.commit(); flash(f"Moved {project.name} to {portfolio.name if portfolio else 'Unassigned'}.", "success")
+        return redirect(url_for("dashboard", portfolio=request.form.get("return_portfolio", "all")))
 
     @app.route("/projects/<int:project_id>/workbench", methods=["GET", "POST"])
     @login_required

@@ -35,6 +35,14 @@ class AppSetting(TimestampMixin, db.Model):
     value = db.Column(db.Text, default="", nullable=False)
 
 
+class Portfolio(TimestampMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(160), nullable=False)
+    slug = db.Column(db.String(160), unique=True, nullable=False)
+    description = db.Column(db.Text, default="", nullable=False)
+    projects = db.relationship("SystemProject", back_populates="portfolio")
+
+
 class SystemProject(TimestampMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(160), nullable=False)
@@ -42,7 +50,9 @@ class SystemProject(TimestampMixin, db.Model):
     description = db.Column(db.Text, default="", nullable=False)
     platform = db.Column(db.String(80), default="SQLite", nullable=False)
     dialect = db.Column(db.String(40), default="sqlite", nullable=False)
+    portfolio_id = db.Column(db.Integer, db.ForeignKey("portfolio.id"), nullable=True, index=True)
     active_revision_id = db.Column(db.Integer, db.ForeignKey("diagram_revision.id"), nullable=True)
+    portfolio = db.relationship("Portfolio", back_populates="projects")
     revisions = db.relationship("DiagramRevision", foreign_keys="DiagramRevision.project_id", back_populates="project", cascade="all, delete-orphan")
 
 
