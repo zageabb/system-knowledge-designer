@@ -1,5 +1,31 @@
 # System Knowledge Designer
 
+## Ubuntu server deployment
+
+Verified on **14 September 2026** against the listeners, user systemd services,
+Docker port mappings and deployment registry on `192.168.1.249`.
+
+| Endpoint | Host TCP port | LAN URL |
+|---|---:|---|
+| Application | 5015 | http://192.168.1.249:5015/ |
+
+Checkout: `/home/zageabb/ollama-chat/system-knowledge-designer`.
+
+These are **user** systemd units. Inspect them with:
+
+```bash
+systemctl --user status ollama-chat-system-knowledge-designer.service
+systemctl --user cat ollama-chat-system-knowledge-designer.service
+```
+
+Local verification URL: `http://127.0.0.1:5015/health`. HTTP 200 was observed during this audit.
+
+Development defaults and container-internal ports elsewhere in this repository
+may differ from this host deployment. Use the live ports above when accessing
+this Ubuntu server; do not start a second copy on a port already occupied.
+
+[Complete Ubuntu port inventory](https://github.com/zageabb/universal-deployment-agent/blob/main/UBUNTU_PORTS.md).
+
 Local-first executable system knowledge platform. The current verified slices provide authenticated structured modelling and revisions, deterministic sample sandboxes and safe SQL, confirmed AI sample proposals, and managed TXT/Markdown knowledge with local FTS5 search and citations.
 
 ## Quick start
