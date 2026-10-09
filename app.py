@@ -9,6 +9,7 @@ from pathlib import Path
 from flask import Flask, flash, redirect, render_template, request, send_file, url_for
 from flask_login import LoginManager, current_user, login_required, login_user, logout_user
 from flask_wtf import CSRFProtect
+from werkzeug.middleware.proxy_fix import ProxyFix
 from sqlalchemy.exc import IntegrityError
 
 from config import Config
@@ -66,6 +67,8 @@ def _dataset_rows(dataset, replacement=None, excluded_row_id=None):
 
 def create_app(config_overrides: dict | None = None) -> Flask:
     app = Flask(__name__)
+    # Trust one controlled UDA/Caddy proxy hop; isolate direct backend ingress.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_prefix=1)
     app.config.from_object(Config)
     if config_overrides: app.config.update(config_overrides)
     if "RESEARCH_TASK_SUBMITTER" not in app.config:
